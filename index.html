@@ -1,0 +1,1580 @@
+```
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>植物?大戰殭屍</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 20px; color: #243322;
+    font-family: "Microsoft JhengHei", system-ui, sans-serif;
+    background: linear-gradient(#dff3ff, #f5f7df);
+  }
+  .wrap { max-width: 1080px; margin: auto; }
+  header { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  h1 { margin: 0 0 8px; font-size: clamp(24px, 4vw, 36px); }
+  .hud { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .pill { background:#fff; border:2px solid #c9d8b5; border-radius:14px; padding:9px 14px; font-weight:700; }
+  .toolbar { display:flex; gap:8px; flex-wrap:wrap; margin:14px 0; }
+  button { cursor:pointer; border:2px solid #6e8c4f; border-radius:12px; padding:9px 13px; background:#fff; color:#243322; font-weight:700; }
+  button:hover { transform:translateY(-1px); background:#f2ffe8; }
+  button.selected { background:#d9f4a8; outline:3px solid #8ab84c; }
+  button:disabled { opacity:.45; cursor:not-allowed; transform:none; }
+  #game { width:100%; display:block; border:4px solid #587a3c; border-radius:14px; background:#8bc85c; box-shadow:0 8px 24px #45632b33; touch-action:none; -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
+  button[data-plant] { position:relative; overflow:hidden; }
+  /* 種植冷卻：灰色遮罩從上往下慢慢退去 */
+  button[data-plant]::after { content:''; position:absolute; left:0; right:0; bottom:0; height:var(--cd,0%); background:rgba(36,51,34,.3); pointer-events:none; }
+  .vol { display:flex; align-items:center; gap:6px; font-weight:700; padding:0 6px; }
+  .vol input { width:90px; accent-color:#6e8c4f; }
+  .help { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-top:12px; color:#4d6042; font-size:14px; }
+  #message { min-height:26px; font-weight:700; color:#365d25; }
+  .overlay { position:fixed; inset:0; background:#14200bbd; display:none; place-items:center; padding:20px; }
+  .panel { max-width:420px; width:100%; background:#fff; border-radius:20px; padding:28px; text-align:center; box-shadow:0 12px 40px #0005; }
+  .panel h2 { font-size:30px; margin:0 0 10px; }
+  .panel p { line-height:1.7; }
+  button { touch-action:manipulation; }
+  /* 圖鑑 */
+  #almanacOverlay { z-index:10; }
+  .panel.almanac { max-width:920px; max-height:88vh; overflow:auto; text-align:left; padding:20px; }
+  .almanacHead { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px; position:sticky; top:-20px; background:#fff; padding:6px 0; z-index:1; }
+  .almanacHead h2 { margin:0; font-size:26px; }
+  .almanacHead .tabs { display:flex; gap:8px; flex:1; }
+  .almanacGrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:12px; }
+  .acard { display:flex; gap:10px; border:2px solid #c9d8b5; border-radius:14px; padding:10px; background:#f9fff0; }
+  .acard .pic { position:relative; width:88px; height:88px; flex:0 0 88px; display:grid; place-items:center; background:#e8f4d8; border-radius:10px; }
+  .acard .pic img { max-width:100%; max-height:100%; object-fit:contain; }
+  .acard .pic .emoji { font-size:46px; }
+  .acard .pic .badge { position:absolute; right:2px; bottom:0; font-size:22px; }
+  .acard h3 { margin:0 0 4px; font-size:17px; }
+  .acard .st { font-size:12.5px; color:#4d6042; line-height:1.6; }
+  .acard .ds { font-size:13px; margin-top:4px; line-height:1.55; }
+  /* 開局前選擇出戰植物 */
+  #loadoutOverlay { z-index:20; }
+  .lcard { cursor:pointer; position:relative; user-select:none; }
+  .lcard:hover { border-color:#8ab84c; }
+  .lcard.sel { border-color:#6aa22e; background:#e7f9c9; box-shadow:0 0 0 3px #8ab84c; }
+  .lcard.full:not(.sel) { opacity:.45; cursor:not-allowed; }
+  .lcard .num { position:absolute; top:6px; right:8px; min-width:26px; height:26px; padding:0 6px; border-radius:999px; background:#6aa22e; color:#fff; display:grid; place-items:center; font-weight:700; font-size:14px; }
+  .lcard .ds { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+  .loadoutHint { margin:0 0 12px; color:#4d6042; font-size:14px; }
+  .almanacHead .count { font-weight:700; color:#365d25; }
+  @media (max-width:600px) {
+    body{padding:10px} .pill{padding:7px 10px} button{padding:8px 10px}
+    /* 手機：工具列改成單行，可左右滑動，不佔太多畫面 */
+    .toolbar { flex-wrap:nowrap; overflow-x:auto; padding-bottom:6px; -webkit-overflow-scrolling:touch; }
+    .toolbar > * { flex:0 0 auto; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div><h1>🌻 PVZ Mini</h1><div>第一版：種植、收集陽光、抵禦殭屍</div></div>
+    <div class="hud">
+      <div class="pill">☀️ 陽光：<span id="sun">150</span></div>
+      <div class="pill">🏁 擊退：<span id="kills">0</span></div>
+      <div class="pill">🌊 波次：<span id="wave">1</span></div>
+    </div>
+  </header>
+
+  <div class="toolbar" id="seedbar">
+    <button data-plant="sunflower" class="selected">🌻 向日葵<br><small>50 陽光</small></button>
+    <button data-plant="peashooter">🌱 豌豆射手<br><small>100 陽光</small></button>
+    <button data-plant="iceshooter">❄️ 高冷安<br><small>150 陽光</small></button>
+    <button data-plant="wallnut">🥜 堅果牆<br><small>50 陽光</small></button>
+    <button data-plant="luanne">⭐ 滷安<br><small>150 陽光</small></button>
+    <button data-plant="puncher">🥊 拳擊菜<br><small>125 陽光</small></button>
+    <button data-plant="flamer">🔥 暖女<br><small>200 陽光</small></button>
+    <button data-plant="chomper">🌺 頂級看門守護犬<br><small>125 陽光</small></button>
+    <button data-plant="qiuqiu">🔵 巨大球球<br><small>150 陽光</small></button>
+    <button data-plant="luanneTrap">🪤 滷安陷阱<br><small>50 陽光</small></button>
+    <button data-plant="emmaBed">🛏️ Emma 床墊<br><small>25 陽光</small></button>
+    <button data-plant="magnet">🧲 磁鐵草<br><small>100 陽光</small></button>
+    <button data-plant="laser">🔦 man安<br><small>175 陽光</small></button>
+    <button data-plant="lightning">⚡ 臘腸電塔<br><small>225 陽光</small></button>
+    <button data-plant="catapult">🪨 便便球<br><small>150 陽光</small></button>
+    <button id="shovel">🪏 鏟子</button>
+    <button id="pause">⏸ 暫停</button>
+    <button id="almanacBtn">📖 圖鑑</button>
+    <button id="mute">🔊 音樂開</button>
+    <label class="vol">🎵 音量 <input type="range" id="vol" min="0" max="100" value="60"></label>
+    <button id="loadoutBtn">🎒 換植物</button>
+    <button id="restart">↻ 重新開始</button>
+  </div>
+
+  <canvas id="game" width="1200" height="667" aria-label="植物大戰殭屍遊戲草地"></canvas>
+  <div class="help">
+    <span>操作：選擇植物，再點草地格子種植（手機可按住拖曳預覽，放開才種）；點擊 ☀️ 收集陽光。快捷鍵：1~9、0 選植物（依你帶的順序）、P 或空白鍵暫停。</span>
+    <span>殭屍從右側出現！每列最左邊有一台割草機，殭屍衝到底會自動清掉整列（只能用一次）。</span>
+  </div>
+  <p id="message">選擇植物，開始佈置防線吧！</p>
+</div>
+
+<div class="overlay" id="loadoutOverlay">
+  <div class="panel almanac">
+    <div class="almanacHead">
+      <h2>🎒 選擇出戰植物</h2>
+      <div class="tabs"><span class="count" id="loadoutCount"></span></div>
+      <button id="loadoutDefault">預設組合</button>
+      <button id="loadoutClear">清空</button>
+      <button id="loadoutCancel">取消</button>
+      <button id="loadoutStart">▶ 開始遊戲</button>
+    </div>
+    <p class="loadoutHint" id="loadoutHint"></p>
+    <div id="loadoutList" class="almanacGrid"></div>
+  </div>
+</div>
+
+<div class="overlay" id="almanacOverlay">
+  <div class="panel almanac">
+    <div class="almanacHead">
+      <h2>📖 圖鑑</h2>
+      <div class="tabs">
+        <button id="tabPlants" class="selected">🌱 植物</button>
+        <button id="tabZombies">🧟 殭屍</button>
+      </div>
+      <button id="almanacClose">✕ 關閉</button>
+    </div>
+    <div id="almanacList" class="almanacGrid"></div>
+  </div>
+</div>
+
+<div class="overlay" id="pauseOverlay">
+  <div class="panel">
+    <h2>⏸ 遊戲暫停</h2>
+    <p>按 P 或空白鍵也可以繼續</p>
+    <button id="resume">▶ 繼續遊戲</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="panel">
+    <h2 id="resultTitle">遊戲結束</h2>
+    <p id="resultText"></p>
+    <button id="playAgain">再玩一次</button>
+    <button id="changeLoadout" style="margin-left:8px">🎒 換植物</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const COLS = 9, ROWS = 5;
+  // ===== 草地對位設定（照片比例不合時，只要調這 4 個數字）=====
+  // 畫布大小 1200x667。GX/GY = 草地格子左上角在畫布上的位置；CW/CH = 每格寬高
+  const GX = 224;   // 往右移 → 植物整體右移（草地左邊緣的 x）
+  const GY = 65;    // 往下移 → 植物整體下移（草地上邊緣的 y）
+  const CW = 108;   // 每格寬度（(1200-GX)/9 ≈ 108）
+  const CH = 120;   // 每格高度（(667-GY)/5 ≈ 120）
+  const costs = { sunflower: 50, peashooter: 100, iceshooter: 150, wallnut: 50, luanne: 150, puncher: 125, flamer: 200, chomper: 150, qiuqiu: 150, luanneTrap: 50, emmaBed: 25, magnet: 100, laser: 175, lightning: 225, catapult: 150 };
+  const names = { sunflower: '向日葵', peashooter: '豌豆射手', wallnut: '堅果牆', luanne: '滷安', qiuqiu: '巨大球球', luanneTrap: '滷安陷阱', emmaBed: 'Emma 床墊', magnet: '磁鐵草', laser: 'man安', lightning: '臘腸電塔', iceshooter: '高冷安', puncher: '拳擊菜', flamer: '暖女', chomper: '頂級看門守護犬', catapult: '便便球' };
+  const maxHpOf = { sunflower: 100, peashooter: 100, iceshooter: 160, wallnut: 620, luanne: 160, puncher: 260, flamer: 130, chomper: 200, luanneTrap: 1, emmaBed: 1500, magnet: 160, laser: 180, lightning: 150, catapult: 180 };
+  // 圖片顯示大小（像素）。格子是 100x100，數字越大角色越大。
+  const plantSize = { sunflower: 90, peashooter: 90, iceshooter: 120, wallnut: 100, luanne: 120, puncher: 100, flamer: 110, chomper: 130, luanneTrap: 80, emmaBed: 210, magnet: 100, laser: 110, lightning: 110, catapult: 175 };
+  const EMMA_BED_SLEEP_TIME = 20;  // 殭屍躺在 Emma 床墊上睡 20 秒
+  const TRAP_ARM_TIME = 15;       // 地雷埋入土中後，15 秒才會啟動
+  const TRAP_RANGE = 1.5;         // 中心格及同列前後各一格
+  // ===== 高冷安 =====
+  const ICE_DAMAGE = 20;          // 冰豌豆傷害（比豌豆低，主要靠減速）
+  const ICE_SLOW_TIME = 3;        // 命中後減速幾秒（再被打中會重新計時）
+  const ICE_SLOW_RATE = 0.45;     // 減速後的速度倍率（0.45 = 只剩 45% 速度，啃咬也變慢）
+  // ===== 拳擊菜（近戰）=====
+  const PUNCH_DAMAGE = 90;        // 每拳傷害
+  const PUNCH_CD = 0.85;          // 出拳間隔（秒）
+  const PUNCH_RANGE = CW * 1.35;  // 出拳距離（從植物中心往右算）
+  const PUNCH_KNOCK = 38;         // 擊退距離（像素）；巨人、殭屍王擊退效果較小或無效
+  // ===== 暖女（短距離範圍持續傷害）=====
+  const FLAME_RANGE = CW * 3;     // 火焰長度（約 3 格）
+  const FLAME_DPS = 55;           // 每秒傷害（同一列範圍內所有殭屍都會受到）
+  const FLAME_ON = 2.2;           // 持續噴幾秒
+  const FLAME_REST = 1.2;         // 噴完要休息幾秒
+  // ===== 頂級看門守護犬（吞掉殭屍，吞完要咀嚼）=====
+  const CHOMP_SIZE = 150;
+  const CHOMP_RANGE = CW * 1.25;  // 咬人距離（從植物中心往右算）
+  const CHOMP_OPEN = 0.35;         // 張嘴蓄力時間（秒）：這段時間殭屍還有機會走開
+  const CHOMP_CHEW_BASE = 5;      // 咀嚼時間 = 基本 + 殭屍血量倍率 × 每倍率秒數（越硬的殭屍嚼越久）
+  const CHOMP_CHEW_PER_HP = 1.5;
+  const CHOMP_CHEW_MAX = 18;      // 咀嚼時間上限
+  const CHOMP_GIANT_DMG = 1200;   // 對巨人只能咬傷（吞不下），殭屍王則完全無效
+  // ===== 磁鐵草（吸走殭屍的金屬護具）=====
+  const MAGNET_RANGE = CW * 4;    // 吸力範圍：從植物中心往右約 4 格
+  const MAGNET_ROWS = 1;          // 上下各幾排（1 = 共 3 排）
+  const MAGNET_CD = 10;           // 吸一次後要充能幾秒
+  // ===== man安（同列穿透攻擊）=====
+  const LASER_DAMAGE = 55;          // 每次雷射對每隻殭屍造成的傷害
+  const LASER_CD = 2.1;             // 發射間隔（秒）
+  const LASER_FLASH_TIME = 0.28;    // 雷射光束顯示時間
+  // ===== 臘腸電塔（依血量百分比的雷擊，專剋後期又硬又厚的殭屍）=====
+  const LIGHTNING_CD = 7;            // 每幾秒劈一次
+  const LIGHTNING_FIRST = 3;         // 剛種下要先充能幾秒
+  const LIGHTNING_TARGETS = 3;       // 一次劈幾隻（全場血量最高的優先）
+  const LIGHTNING_PCT = 0.20;        // 每道雷 = 目標「最大血量」的 20%，殭屍越硬、波次越後面威力越大
+  const LIGHTNING_BOSS_PCT = 0.03;   // 對殭屍王只有 3%，避免一個人把王打爆
+  const BOLT_IMG_WIDTH = 150;        // 雷電圖片在畫面上的寬度（高度會自動拉到從天上劈到殭屍身上）
+  const BOLT_BLEND = 'lighter';      // 雷電圖片的疊色方式：'lighter'＝發光疊加（黑色背景的圖會自動變透明、更亮更逼真）；透明背景的 PNG 也適用。想正常貼圖改成 'source-over'
+  const LIGHTNING_MIN = 150;         // 最低傷害（血量低的一般殭屍也至少吃這麼多，殭屍王不適用）
+  // ===== 舞王殭屍（會召喚伴舞）=====
+  const DANCER_SUMMON_EVERY = 10; // 每幾秒召喚一次
+  const DANCER_MAX_SUMMONS = 3;   // 最多召喚幾次
+  // ===== 割草機 =====
+  const MOWER_SPEED = 600;        // 割草機衝刺速度（像素/秒）
+  const MOWER_SIZE = 150;          // 割草機大小（圖片與預設紅色割草機都會跟著變）；預設 70，想放大就改成 100、120…
+  const MOWER_X = -40;            // 待命位置（草地左邊緣再往左；數字越小越靠左）
+  const DEATH_T = 0.9;            // 殭屍倒下動畫長度（秒）
+  const ZOMBIE_SIZE = 100;
+  // ===== 球球（從天而降的壓扁型植物，一次性）=====
+  const BALL_SIZE = 250;      // 球球圖片大小
+  const BALL_CD = 15;         // 冷卻秒數（用完要等多久才能再用）
+  const BALL_DAMAGE = 9999;   // 傷害（9999 = 直接壓扁）
+  const BALL_ROWS = 1;        // 影響上下各幾排（1 = 共 3 排）
+  const BALL_RANGE = 1.4;     // 影響左右幾格（以落點為中心）
+
+  // ===== 種植冷卻（秒）：種下後同一種植物要等多久才能再種 =====
+  const cds = { sunflower: 4, peashooter: 6, iceshooter: 8, wallnut: 12, luanne: 8, puncher: 8, flamer: 12, chomper: 10, qiuqiu: BALL_CD, luanneTrap: 8, emmaBed: 40, magnet: 12, laser: 10, lightning: 15, catapult: 12 };
+
+  // ===== 殭屍種類 =====
+  // hp = 血量倍率、speed = 速度倍率、size = 圖片大小、bite = 每次啃咬傷害、squash = 被球球壓扁時的傷害倍率
+  // img = 專屬圖片；沒有圖片時，會用 zombie.png 加上 deco 畫的配件代替
+  const ZTYPES = {
+    normal: { name:'普通殭屍', hp:1,   speed:1,    size:120, bite:22, squash:1,    img:'zombie',       deco:null },
+    cone:   { name:'路障殭屍', hp:2,   speed:1,    size:120, bite:22, squash:1,    armor:'🚧', img:'zombieCone',   deco:(w,h)=>{
+      ctx.beginPath(); ctx.moveTo(-w*0.17,-h*0.8); ctx.lineTo(w*0.17,-h*0.8); ctx.lineTo(0,-h*1.06); ctx.closePath();
+      ctx.fillStyle='#ff8a1f'; ctx.fill(); ctx.strokeStyle='#fff'; ctx.lineWidth=3; ctx.stroke(); } },
+    bucket: { name:'鐵桶殭屍', hp:3.2, speed:0.9,  size:120, bite:22, squash:1,    armor:'🪣', img:'zombieBucket', deco:(w,h)=>{
+      ctx.fillStyle='#9aa4ad'; ctx.fillRect(-w*0.18,-h*0.99,w*0.36,h*0.2);
+      ctx.strokeStyle='#5d6770'; ctx.lineWidth=3; ctx.strokeRect(-w*0.18,-h*0.99,w*0.36,h*0.2); } },
+    runner: { name:'衝刺殭屍', hp:0.7, speed:3,   size:100,  bite:20, squash:1,    img:'zombieRunner', deco:(w,h)=>{
+      ctx.fillStyle='#e33'; ctx.fillRect(-w*0.17,-h*0.86,w*0.34,h*0.05); } },
+    giant:  { name:'巨人殭屍', hp:8,   speed:0.55, size:150, bite:60, squash:0.25, img:'zombieGiant',  deco:(w,h)=>{
+      ctx.fillStyle='rgba(120,40,160,0.25)'; ctx.fillRect(-w/2,-h,w,h); } },
+    // 撐竿殭屍：衝得很快，碰到第一株植物時會跳過去，之後變普通速度
+    vaulter:  { name:'撐竿殭屍',   hp:1.4, speed:2.3,  size:120, bite:22, squash:1,   knock:1,   img:'zombieVaulter',  deco:(w,h)=>{
+      ctx.strokeStyle='#8a5a2b'; ctx.lineWidth=5; ctx.beginPath(); ctx.moveTo(-w*0.46,-h*0.08); ctx.lineTo(-w*0.2,-h*0.95); ctx.stroke(); } },
+    // 橄欖球殭屍：又快又硬，啃咬也很痛
+    football: { name:'橄欖球殭屍', hp:5,   speed:1.9,  size:125, bite:32, squash:0.6, knock:0.6, armor:'🏈', img:'zombieFootball', deco:(w,h)=>{
+      ctx.fillStyle='#b3261e'; ctx.fillRect(-w*0.2,-h*0.99,w*0.4,h*0.17);
+      ctx.fillStyle='#fff'; ctx.fillRect(-w*0.03,-h*0.99,w*0.06,h*0.17); } },
+    // 鐵門殭屍：門板擋掉大部分子彈傷害（只剩 35%），要靠拳擊、火焰、球球、陷阱
+    door:     { name:'鐵門殭屍',   hp:5,   speed:0.85, size:125, bite:26, squash:1,   knock:0.8, shotResist:0.35, armor:'🚪', img:'zombieDoor', deco:(w,h)=>{
+      ctx.fillStyle='#8c949c'; ctx.fillRect(-w*0.58,-h*0.82,w*0.24,h*0.8);
+      ctx.strokeStyle='#4f565c'; ctx.lineWidth=3; ctx.strokeRect(-w*0.58,-h*0.82,w*0.24,h*0.8);
+      ctx.fillStyle='#ffd24a'; ctx.beginPath(); ctx.arc(-w*0.38,-h*0.42,4,0,Math.PI*2); ctx.fill(); } },
+    // 舞王殭屍：血厚又愛跳舞，進場後定時召喚伴舞（上下排各一隻普通殭屍），要優先解決
+    dancer:   { name:'舞王殭屍',   hp:3,   speed:1.2,  size:125, bite:24, squash:1,   knock:1,   img:'zombieDancer',   deco:(w,h)=>{
+      ctx.fillStyle='rgba(150,60,200,0.28)'; ctx.fillRect(-w/2,-h,w,h);
+      ctx.fillStyle='#111'; ctx.fillRect(-w*0.22,-h*0.86,w*0.34,h*0.06); } },
+    // 鋼盾殭屍：血厚，盾牌大幅降低子彈傷害；磁鐵草可以吸走盾牌
+    shield:   { name:'鋼盾殭屍',   hp:7,   speed:0.68, size:135, bite:38, squash:0.55, knock:0.5, shotResist:0.45, armor:'🛡️', img:'zombieShield', deco:(w,h)=>{
+      ctx.fillStyle='#8796a8'; ctx.fillRect(-w*0.58,-h*0.78,w*0.28,h*0.72);
+      ctx.strokeStyle='#e4edf7'; ctx.lineWidth=4; ctx.strokeRect(-w*0.58,-h*0.78,w*0.28,h*0.72); } },
+    // 狂暴殭屍：移動極快，攻擊也更痛，但血量沒有重裝殭屍高
+    berserker:{ name:'狂暴殭屍',   hp:4.2, speed:2.45, size:125, bite:42, squash:0.8, knock:0.7, img:'zombieBerserker', deco:(w,h)=>{
+      ctx.fillStyle='#c62828'; ctx.fillRect(-w*0.24,-h*0.9,w*0.48,h*0.08);
+      ctx.fillStyle='#ffcc33'; ctx.fillRect(-w*0.08,-h*0.9,w*0.16,h*0.08); } },
+    // 巨錘殭屍：超高血量、重擊植物，移動非常緩慢
+    hammer:   { name:'巨錘殭屍',   hp:50,  speed:1.1, size:300, bite:95, squash:0.15, knock:0, img:'zombieHammer', deco:(w,h)=>{
+      ctx.fillStyle='#626b75'; ctx.fillRect(w*0.22,-h*0.78,w*0.42,h*0.18);
+      ctx.strokeStyle='#343a40'; ctx.lineWidth=3; ctx.strokeRect(w*0.22,-h*0.78,w*0.42,h*0.18); } },
+    // 殭屍王：最後一波登場，血厚、啃咬極痛，每 9 秒召喚兩隻手下
+    boss:     { name:'殭屍王',     hp:16,  speed:0.55, size:250, bite:90, squash:0.1, knock:0,   noSleep:true, img:'zombieBoss',     deco:(w,h)=>{
+      ctx.fillStyle='#ffd24a'; ctx.beginPath();
+      ctx.moveTo(-w*0.2,-h*0.86); ctx.lineTo(-w*0.2,-h*1.02); ctx.lineTo(-w*0.1,-h*0.94); ctx.lineTo(0,-h*1.06);
+      ctx.lineTo(w*0.1,-h*0.94); ctx.lineTo(w*0.2,-h*1.02); ctx.lineTo(w*0.2,-h*0.86); ctx.closePath(); ctx.fill();
+      ctx.fillStyle='rgba(150,20,20,0.22)'; ctx.fillRect(-w/2,-h,w,h); } }
+  };
+  const images = {};
+
+  function loadImage(name, path) {
+    const img = new Image();
+    img.src = path;
+    images[name] = img;
+  }
+
+  loadImage('sunflower', 'images/sunflower.png');
+  loadImage('peashooter', 'images/peashooter.png');
+  loadImage('wallnut', 'images/wallnut.png');
+  loadImage('zombie', 'images/zombie.png');
+  loadImage('luanne', 'images/luanne.png');
+  // 拳擊菜、噴火草圖片：放 images/puncher.png、images/flamer.png（沒有檔案時先用 🥊 🔥 代替）
+  loadImage('puncher', 'images/puncher.png');
+  loadImage('flamer', 'images/flamer.png');
+  // 食人花三張圖：待機、張嘴、閉嘴（沒放圖片時先用表情符號代替）
+  loadImage('chomperIdle', 'images/chomper_idle.png');
+  loadImage('chomperOpen', 'images/chomper_open.png');
+  loadImage('chomperClosed', 'images/chomper_closed.png');
+  // 割草機圖片（選用）：放 images/mower.png；沒有檔案時會畫一台紅色割草機
+  loadImage('mower', 'images/mower.png');
+  // 寒冰射手圖片：放 images/iceshooter.png（沒有檔案時先用 ❄️ 符號代替）
+  loadImage('iceshooter', 'images/iceshooter.png');
+  // 滷安陷阱圖片：放 images/luanne_trap.png
+  loadImage('luanneTrap', 'images/luanne_trap.png');
+  // Emma 床墊圖片（可放 images/emma_bed.png；未提供圖片時會用 🛏️ 代替）
+  loadImage('emmaBed', 'images/emma_bed.png');
+  // 磁鐵草圖片：放 images/magnet.png（沒有檔案時先用 🧲 代替）
+  loadImage('magnet', 'images/magnet.png');
+  // 雷射植物圖片：放 images/laser.png（沒有檔案時會用 🔦 代替）
+  loadImage('laser', 'images/laser.png');
+  // 閃電花圖片：放 images/lightning.png（沒有檔案時先用 ⚡ 代替）
+  loadImage('lightning', 'images/lightning.png');
+  // 投石器三張動作圖與石彈：待機、裝填、剛投出；石彈會先滑上投石器再拋物線飛行
+  loadImage('catapultIdle', 'images/catapult_idle.png');
+  loadImage('catapultLoaded', 'images/catapult_loaded.png');
+  loadImage('catapultThrow', 'images/catapult_throw.png');
+  loadImage('catapultProjectile', 'images/catapult_projectile.png');
+  // 閃電花劈下來的雷電圖片（選用）：放 images/lightning_bolt.png，要是「直的」閃電；沒有檔案就畫程式產生的鋸齒閃電
+  loadImage('lightningBolt', 'images/lightning_bolt.png');
+  // 草地背景：請把你的照片命名為 lawn.jpg 放進 images 資料夾（副檔名不同請改這裡）
+  loadImage('lawn', 'images/lawn.png');
+  // 選用：滷安專屬子彈圖片。若檔案不存在，會自動改畫金色星星。
+  loadImage('luanneBullet', 'images/luanne_bullet.png');
+  // 球球圖片：放 images/qiuqiu.png（沒有檔案時會先用藍色圓球代替）
+  loadImage('qiuqiu', 'images/qiuqiu.png');
+  // 選用：各種殭屍專屬圖片（沒有檔案就用 zombie.png 加配件代替）
+  loadImage('zombieCone', 'images/zombie_cone.png');
+  loadImage('zombieBucket', 'images/zombie_bucket.png');
+  loadImage('zombieRunner', 'images/zombie_runner.png');
+  loadImage('zombieGiant', 'images/zombie_giant.png');
+  loadImage('zombieVaulter', 'images/zombie_vaulter.png');
+  loadImage('zombieFootball', 'images/zombie_football.png');
+  loadImage('zombieDoor', 'images/zombie_door.png');
+  loadImage('zombieBoss', 'images/zombie_boss.png');
+  loadImage('zombieDancer', 'images/zombie_dancer.png');
+  // 新增強化殭屍圖片（沒有圖片時會用 zombie.png 加上盾牌／配件代替）
+  loadImage('zombieShield', 'images/zombie_shield.png');
+  loadImage('zombieBerserker', 'images/zombie_berserker.png');
+  loadImage('zombieHammer', 'images/zombie_hammer.png');
+  // ===== 過關條件 =====
+  const WIN_TIME = 375;      // 撐過幾秒後不再出新殭屍（375 秒約 11 波）；清光場上殭屍即過關
+  let finalWave = false;
+
+  // ===== 音樂與音效 =====
+  // 背景音樂：把音樂檔放在 audio/bgm.mp3（沒有檔案就只是沒有音樂，不會壞）
+  let musicVol = 0.6;                 // 預設音量 0~1，也可以用工具列的滑桿調整
+  let muted = false, interacted = false, actx = null, bgmGain = null, bgmBuf = null, bgmSrc = null;
+  function getCtx() {
+    if (!actx) {
+      actx = new (window.AudioContext || window.webkitAudioContext)();
+      bgmGain = actx.createGain(); bgmGain.gain.value = musicVol; bgmGain.connect(actx.destination);
+    }
+    return actx;
+  }
+  // 備用播放器：一般 <audio>，循環時可能有一點點空隙
+  const bgmEl = new Audio('audio/bgm.mp3');
+  bgmEl.loop = true; bgmEl.volume = musicVol;
+  // 主要播放器：把音樂解碼成 buffer，用 WebAudio 無縫循環（短音樂也不會卡一下）
+  // 注意：直接雙擊開啟 html（file://）時瀏覽器可能擋掉讀取，這時會自動改用備用播放器
+  fetch('audio/bgm.mp3').then(r => r.arrayBuffer()).then(b => getCtx().decodeAudioData(b)).then(buf => {
+    bgmBuf = buf;
+    if (interacted && !muted) { bgmEl.pause(); bgm.play(); }
+  }).catch(() => {});
+  function stopSrc() { if (bgmSrc) { try { bgmSrc.stop(); } catch (e) {} bgmSrc = null; } }
+  const bgm = {
+    play() {
+      if (bgmBuf) {
+        stopSrc(); const c = getCtx(); c.resume();
+        bgmSrc = c.createBufferSource(); bgmSrc.buffer = bgmBuf; bgmSrc.loop = true;
+        bgmSrc.connect(bgmGain); bgmSrc.start();
+      } else bgmEl.play().catch(() => {});
+    },
+    pause() { stopSrc(); bgmEl.pause(); },
+    set currentTime(v) { bgmEl.currentTime = v; }   // 重新開始時，play() 會讓 buffer 從頭播
+  };
+  document.getElementById('vol').addEventListener('input', e => {
+    musicVol = e.target.value / 100;
+    bgmEl.volume = musicVol; if (bgmGain) bgmGain.gain.value = musicVol;
+  });
+  function startMusic() { if (!muted) bgm.play(); }
+  // 瀏覽器規定要使用者操作過才能播放，所以第一次點擊才開始
+  document.addEventListener('pointerdown', () => { if (!interacted) { interacted = true; startMusic(); } });
+  document.getElementById('mute').addEventListener('click', e => {
+    muted = !muted;
+    e.target.textContent = muted ? '🔇 音樂關' : '🔊 音樂開';
+    if (muted) bgm.pause(); else if (!paused) startMusic();
+  });
+  // 音效用 WebAudio 即時合成，不需要任何檔案
+  function beep(freq, dur, type='sine', vol=0.08, slideTo=0, delay=0) {
+    if (muted) return;
+    try {
+      getCtx();
+      const t0 = actx.currentTime + delay, o = actx.createOscillator(), g = actx.createGain();
+      o.type = type; o.frequency.setValueAtTime(freq, t0);
+      if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+      g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(g); g.connect(actx.destination); o.start(t0); o.stop(t0 + dur);
+    } catch (e) {}
+  }
+  const sfx = {
+    plant: () => beep(300, .12, 'triangle', .1, 520),
+    sun:   () => beep(700, .15, 'sine', .08, 1250),
+    shoot: () => beep(520, .08, 'square', .025, 260),
+    punch: () => { beep(180, .1, 'square', .12, 70); beep(90, .12, 'sawtooth', .08, 50); },
+    flame: () => beep(240 + Math.random()*90, .18, 'sawtooth', .03, 110),
+    jump:  () => beep(300, .25, 'triangle', .08, 720),
+    chomp: () => { beep(220, .07, 'square', .12, 80); beep(110, .14, 'sawtooth', .09, 55, .06); },
+    chew:  () => beep(160, .06, 'triangle', .035, 110),
+    thunder: () => { beep(1400, .07, 'sawtooth', .08, 250); beep(80, .45, 'square', .11, 40, .05); },
+    magnet: () => { beep(700, .22, 'sine', .08, 180); beep(120, .1, 'square', .08, 60, .2); },
+    dance: () => [392, 523, 659].forEach((f, i) => beep(f, .12, 'square', .05, 0, i*.1)),
+    mower: () => { beep(90, .5, 'sawtooth', .09, 170); beep(60, .5, 'square', .05, 100); },
+    die:   () => beep(220, .3, 'sawtooth', .05, 50),
+    horn:  () => { beep(110, .7, 'sawtooth', .09, 85); beep(165, .7, 'square', .04, 120); },
+    boom:  () => { beep(140, .4, 'sawtooth', .14, 35); beep(70, .5, 'square', .1, 30); },
+    win:   () => [523, 659, 784, 1047].forEach((f, i) => beep(f, .25, 'triangle', .1, 0, i*.15)),
+    lose:  () => [392, 330, 262, 196].forEach((f, i) => beep(f, .35, 'sawtooth', .07, 0, i*.25))
+  };
+
+  let almanacOpen = false, choosing = false, hasStarted = false;   // choosing＝正在選出戰植物（遊戲暫停）
+  let plants, zombies, peas, suns, explosions, corpses, mowers, armorFx, bolts, sun, kills, selected, shovel, running, lastTime, spawnTimer, sunTimer, elapsed, drops, cd, shake, lastWave, paused, hover, dragging, animClock = 0;
+
+  const $ = id => document.getElementById(id);
+  function reset() {
+    plants = []; zombies = []; peas = []; suns = []; explosions = []; drops = []; armorFx = []; bolts = [];
+    corpses = []; mowers = Array.from({length:ROWS}, (_, r) => ({row:r, x:MOWER_X, state:'idle'})); cd = {}; shake = 0; paused = false; hover = null; dragging = false;
+    sun = 125; kills = 0; selected = loadout.includes('sunflower') ? 'sunflower' : loadout[0]; shovel = false;
+    running = true; lastTime = 0; spawnTimer = 6; sunTimer = 5; elapsed = 0; finalWave = false; lastWave = 0;
+    bgm.currentTime = 0; if (interacted) startMusic();
+    $('overlay').style.display = 'none'; $('pauseOverlay').style.display = 'none'; $('pause').textContent = '⏸ 暫停';
+    if (actx && actx.state === 'suspended') actx.resume();
+    $('message').textContent = '選擇植物，開始佈置防線吧！';
+    updateHUD(); updateButtons();
+  }
+  function updateHUD() {
+    $('sun').textContent = sun;
+    $('kills').textContent = kills;
+    $('wave').textContent = Math.min(Math.floor(WIN_TIME/35) + 1, 1 + Math.floor(elapsed / 35));   // 顯示實際波次（不再卡在 5）
+  }
+  function updateButtons() {
+    document.querySelectorAll('[data-plant]').forEach(b => b.classList.toggle('selected', !shovel && b.dataset.plant === selected));
+    $('shovel').classList.toggle('selected', shovel);
+    document.querySelectorAll('[data-plant]').forEach(b => {
+      const k = b.dataset.plant, left = cd[k] || 0, ki = loadout.indexOf(k), key = ki >= 0 ? '1234567890'[ki] : '';
+      b.disabled = sun < costs[k] || (k === 'emmaBed' && left > 0);
+      b.style.setProperty('--cd', (left / cds[k] * 100) + '%');
+      b.querySelector('small').textContent = (key ? `[${key}] ` : '') + (left > 0 ? `冷卻 ${Math.ceil(left)} 秒` : `${costs[k]} 陽光`);
+    });
+  }
+  document.querySelectorAll('[data-plant]').forEach(b => b.addEventListener('click', () => {
+    selected = b.dataset.plant; shovel = false; updateButtons();
+    $('message').textContent = selected === 'qiuqiu'
+      ? '已選擇球球，點任一格，球球會從天而降壓扁那一小群殭屍！'
+      : `已選擇${names[selected]}，點擊草地空格種植。`;
+  }));
+  $('shovel').addEventListener('click', () => { shovel = !shovel; updateButtons(); $('message').textContent = shovel ? '鏟子已啟用，點擊植物移除。' : '已取消鏟子。'; });
+  $('restart').addEventListener('click', reset);
+  $('playAgain').addEventListener('click', reset);
+
+  // ===== 暫停 =====
+  function togglePause(force) {
+    if (!running) return;
+    const next = force === undefined ? !paused : force;
+    if (next === paused) return;
+    paused = next; hover = null; dragging = false;
+    $('pauseOverlay').style.display = paused ? 'grid' : 'none';
+    $('pause').textContent = paused ? '▶ 繼續' : '⏸ 暫停';
+    if (paused) { if (bgmBuf && actx) actx.suspend(); else bgmEl.pause(); }
+    else if (!muted && interacted) { if (bgmBuf && actx) actx.resume(); else bgmEl.play().catch(() => {}); }
+  }
+  $('pause').addEventListener('click', () => togglePause());
+  $('resume').addEventListener('click', () => togglePause(false));
+  // 切到別的分頁／視窗時自動暫停，避免回來時已經輸了
+  document.addEventListener('visibilitychange', () => { if (document.hidden && !choosing) togglePause(true); });
+  // 快捷鍵依「出戰植物」的順序：帶的第 1 種按 1、第 2 種按 2……（第 10 種按 0）
+  document.addEventListener('keydown', e => {
+    if (e.repeat) return;
+    if (choosing) { if (e.key === 'Escape' && hasStarted) closeLoadout(); return; }   // 選植物時，只有 Esc（取消）有效
+    if (almanacOpen) { if (e.key === 'Escape') closeAlmanac(); return; }   // 圖鑑開著時，只有 Esc 有效
+    const onControl = e.target.closest && e.target.closest('button,input');
+    if (e.key === 'p' || e.key === 'P' || e.key === 'Escape' || (e.key === ' ' && !onControl)) { e.preventDefault(); togglePause(); return; }
+    const i = '1234567890'.indexOf(e.key);
+    if (i >= 0 && !paused && running) {
+      const b = loadout[i] && document.querySelector(`[data-plant="${loadout[i]}"]`);
+      if (b && !b.disabled) b.click();
+    }
+  });
+
+  function cellAt(x, y) {
+    const col = Math.floor(x / CW), row = Math.floor(y / CH);
+    return col >= 0 && col < COLS && row >= 0 && row < ROWS ? {col,row} : null;
+  }
+  function toGrid(e) {
+    const r = canvas.getBoundingClientRect(), k = canvas.width / r.width;
+    return { x:(e.clientX-r.left)*k - GX, y:(e.clientY-r.top)*k - GY, k };
+  }
+  // 收陽光：觸控時判定範圍加大（以螢幕上約 28px 為準），手指比較好點
+  function collectSun(g, touch) {
+    const rad = Math.max(30, (touch ? 28 : 0) * g.k);
+    for (let i=suns.length-1;i>=0;i--) {
+      const s = suns[i];
+      if (Math.hypot(g.x-s.x, g.y-s.y) < rad) { sun += 25; suns.splice(i,1); sfx.sun(); updateHUD(); updateButtons(); return true; }
+    }
+    return false;
+  }
+  function placeAt(cell) {
+    const idx = plants.findIndex(p => p.col===cell.col && p.row===cell.row);
+    if (shovel) {
+      if (idx>=0) { plants.splice(idx,1); $('message').textContent='植物已移除。'; }
+      return;
+    }
+    if (selected==='qiuqiu') {   // 球球不佔格子，任何格子都能砸
+      if ((cd.qiuqiu||0)>0) { $('message').textContent=`球球冷卻中，還要 ${Math.ceil(cd.qiuqiu)} 秒。`; return; }
+      if (sun < costs.qiuqiu) { $('message').textContent='陽光不足！'; return; }
+      sun -= costs.qiuqiu; cd.qiuqiu = cds.qiuqiu;
+      drops.push({col:cell.col,row:cell.row,y:-GY-BALL_SIZE-40,ty:cell.row*CH+CH/2,vy:200,state:'fall',life:0});
+      updateHUD(); updateButtons();
+      $('message').textContent='球球落下！';
+      return;
+    }
+    if (idx>=0) { $('message').textContent='這格已經有植物了！'; return; }
+    if ((cd[selected]||0)>0) { $('message').textContent=`${names[selected]}冷卻中，還要 ${Math.ceil(cd[selected])} 秒。`; return; }
+    if (sun < costs[selected]) { $('message').textContent='陽光不足！'; return; }
+    sun -= costs[selected]; cd[selected] = cds[selected];
+    plants.push({type:selected,col:cell.col,row:cell.row,hp:maxHpOf[selected],shoot:0,produce:7,
+      armTimer: selected === 'luanneTrap' ? TRAP_ARM_TIME : 0, sleepingZombie: null,
+      catapultState: 'idle', catapultT: 0});
+    updateHUD(); updateButtons();
+    sfx.plant();
+    $('message').textContent=`種下了${names[selected]}！`;
+  }
+  // 滑鼠：移動時顯示預覽，點一下就種。觸控：按住拖曳預覽，放開才種（手指不會擋住又種錯格）
+  canvas.addEventListener('pointerdown', e => {
+    if (!running || paused) return;
+    const g = toGrid(e), touch = e.pointerType !== 'mouse';
+    if (collectSun(g, touch)) return;
+    const cell = cellAt(g.x, g.y);
+    if (touch) {
+      hover = cell; dragging = true;
+      try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+    } else if (cell) placeAt(cell);
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (!running || paused) return;
+    if (e.pointerType === 'mouse' || dragging) { const g = toGrid(e); hover = cellAt(g.x, g.y); }
+  });
+  canvas.addEventListener('pointerup', () => { if (dragging) { dragging = false; if (hover && running && !paused) placeAt(hover); hover = null; } });
+  canvas.addEventListener('pointercancel', () => { dragging = false; hover = null; });
+  canvas.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') hover = null; });
+
+  // 依波次決定會出現哪些殭屍：越後面，強的種類越多
+  function pickType() {
+    const w = Math.floor(elapsed/30);
+    const pool = [['normal', Math.max(3, 10 - w*1.5)]];
+    if (w >= 1) pool.push(['cone', 3 + w*1.5], ['runner', 2 + w], ['vaulter', 2 + w*0.5]);
+    if (w >= 2) pool.push(['bucket', 2 + w], ['football', 1 + w*0.6], ['door', 1.5 + w*0.7]);
+    if (w >= 3) pool.push(['giant', w >= 4 ? 2.5 : 1], ['dancer', 1.5 + w*0.4], ['shield', 1.2 + w*0.45]);
+    if (w >= 4) pool.push(['berserker', 1.3 + w*0.35]);
+    if (w >= 5) pool.push(['hammer', 0.8 + w*0.22]);
+    let r = Math.random() * pool.reduce((n, e) => n + e[1], 0);
+    for (const [t, wt] of pool) { if ((r -= wt) < 0) return t; }
+    return 'normal';
+  }
+  function spawnZombie(type, row, dx = 0, x0) {
+    row = row ?? Math.floor(Math.random()*ROWS);
+    type = type || pickType();
+    const zt = ZTYPES[type], wave = Math.floor(elapsed/35);
+    const hp = (200 + wave*50) * zt.hp;
+    zombies.push({type, size:zt.size, biteDmg:zt.bite, x:x0 ?? (COLS*CW+35+dx), y:row*CH+CH/2, row, hp, maxHp:hp,
+      speed:(14 + Math.min(10, elapsed/35)) * zt.speed, bite:0, attack:false, phase:Math.random()*6, flash:0});
+  }
+  // 吸走護具：殭屍變回普通殭屍，血量最多降到普通殭屍的水準；護具會飛向磁鐵
+  function stripArmor(z, tx, ty) {
+    const zt = ZTYPES[z.type], nz = ZTYPES.normal, wave = Math.floor(elapsed/35);
+    armorFx.push({icon:zt.armor, x:z.x, y:z.y - 30, tx, ty, age:0});
+    const nMax = (200 + wave*50) * nz.hp;
+    $('message').textContent = `🧲 磁鐵草吸走了${zt.name}的護具！`;
+    z.type = 'normal'; z.size = nz.size; z.biteDmg = nz.bite;
+    z.hp = Math.min(z.hp, nMax); z.maxHp = nMax;
+    z.speed = (14 + Math.min(10, elapsed/35)) * nz.speed;
+    z.flash = 0.3;
+  }
+  // 雷擊：傷害 = 目標最大血量的百分比（至少 LIGHTNING_MIN），無視鐵門擋子彈的效果
+  function strikeLightning(z) {
+    const pct = z.type==='boss' ? LIGHTNING_BOSS_PCT : LIGHTNING_PCT;
+    z.hp -= z.type==='boss' ? z.maxHp * pct : Math.max(LIGHTNING_MIN, z.maxHp * pct);   // 最低傷害不套用在殭屍王身上
+    z.flash = 0.35; z.cause = 'blast'; z.struck = 0.7;     // struck：短暫標記，避免好幾朵閃電花同時劈同一隻
+    bolts.push({x:z.x, y:z.y, life:0.3, maxLife:0.3, seed:Math.random()*1000});
+    explosions.push({x:z.x, y:z.y - 20, life:0.3, maxLife:0.3, r:70, c0:'#ffffff', c1:'#8fd3ff'});
+  }
+  function addSun(x,y,falling=false) { suns.push({x,y,baseY:y,life:falling?9:12,falling,phase:Math.random()*6}); }
+
+  function update(dt) {
+    if (!running || paused || almanacOpen || choosing) return;
+    elapsed += dt; spawnTimer -= dt; sunTimer -= dt;
+    for (const k in cd) cd[k] = Math.max(0, cd[k]-dt);
+    shake = Math.max(0, shake-dt);
+    const waveNo = Math.floor(elapsed/35);
+    if (waveNo > lastWave && elapsed < WIN_TIME) {   // 每一波開始時，一大群殭屍同時湧入
+      lastWave = waveNo; sfx.horn();
+      $('message').textContent = `🌊 第 ${waveNo+1} 波來襲！殭屍大軍出現！`;
+      for (let i=0;i<2+waveNo;i++) spawnZombie(null, null, i*70);
+    }
+    if (spawnTimer<=0 && elapsed<WIN_TIME) { spawnZombie(); spawnTimer=Math.max(2.2,6.5-elapsed/45)+Math.random()*1.8; }
+    if (elapsed>=WIN_TIME && !finalWave) {
+      finalWave=true; sfx.horn();
+      $('message').textContent='💀 最後一波！殭屍王登場！清光場上的殭屍就過關！';
+      ['giant','giant','football','door','dancer','shield','berserker','hammer','bucket','bucket','cone','vaulter','runner','runner'].forEach((t,i) => spawnZombie(t, i%ROWS, i*60));
+      spawnZombie('boss', 2, 150);
+    }
+    if (sunTimer<=0) { addSun(65+Math.random()*(COLS*CW-140), -15, true); sunTimer=9+Math.random()*4; }
+    plants.forEach(p => {
+      p.kick = Math.max(0, (p.kick||0) - dt*5);
+      if (p.type==='luanneTrap') { p.armTimer = Math.max(0, p.armTimer - dt); return; }
+      if (p.type==='sunflower') {
+        p.produce -= dt;
+        if (p.produce<=0) { addSun(p.col*CW+50,p.row*CH+32); p.produce=10; }
+      }
+      if (p.type==='peashooter') {
+        const target = zombies.some(z=>z.row===p.row && z.x>p.col*CW+55);
+        p.shoot -= dt;
+        if (target && p.shoot<=0) {
+          peas.push({x:p.col*CW+76,y:p.row*CH+CH/2,row:p.row,speed:250,damage:25,kind:'pea'}); p.kick=1; sfx.shoot();
+          p.shoot=1.25;
+        }
+      }
+      if (p.type==='iceshooter') {
+        const target = zombies.some(z=>z.row===p.row && z.x>p.col*CW+55);
+        p.shoot -= dt;
+        if (target && p.shoot<=0) {
+          peas.push({x:p.col*CW+76,y:p.row*CH+CH/2,row:p.row,speed:250,damage:ICE_DAMAGE,kind:'ice'}); p.kick=1; sfx.shoot();
+          p.shoot=1.4;
+        }
+      }
+      if (p.type==='puncher') {
+        p.punchCd = Math.max(0, (p.punchCd||0) - dt); p.punch = Math.max(0, (p.punch||0) - dt);
+        if (p.punchCd<=0) {
+          const px = p.col*CW + CW/2;
+          const targets = zombies.filter(z => z.row===p.row && z.x>px-10 && z.x<px+PUNCH_RANGE).sort((a,b)=>a.x-b.x).slice(0,2);
+          if (targets.length) {   // 一拳最多打到前面兩隻，並把牠們打退
+            targets.forEach(z => {
+              z.hp -= PUNCH_DAMAGE; z.flash = 0.2; z.cause = 'punch';
+              z.x = Math.min(COLS*CW+60, z.x + PUNCH_KNOCK*(ZTYPES[z.type].knock ?? 1));
+              explosions.push({x:z.x-24,y:z.y,life:0.25,maxLife:0.25,r:60,c0:'#ffffff',c1:'#ffd24a'});
+            });
+            p.punch = 0.28; p.punchCd = PUNCH_CD; sfx.punch();
+          }
+        }
+      }
+      if (p.type==='flamer') {
+        if (!p.fireState) { p.fireState = 'idle'; p.fireT = 0; }
+        const reach = p.col*CW + CW*0.78 + FLAME_RANGE;
+        const inRange = z => z.row===p.row && z.x>p.col*CW+30 && z.x<reach;
+        if (p.fireState==='idle') {
+          if (zombies.some(inRange)) { p.fireState = 'on'; p.fireT = FLAME_ON; p.sndT = 0; }
+        } else if (p.fireState==='on') {
+          p.fireT -= dt; p.sndT -= dt;
+          if (p.sndT<=0) { sfx.flame(); p.sndT = 0.22; }
+          zombies.forEach(z => { if (inRange(z)) { z.hp -= FLAME_DPS*dt; z.burn = 0.5; z.slow = 0; z.cause = null; } });   // 火焰會融化冰凍
+          if (p.fireT<=0) { p.fireState = 'rest'; p.fireT = FLAME_REST; }
+        } else {
+          p.fireT -= dt;
+          if (p.fireT<=0) p.fireState = 'idle';
+        }
+      }
+      if (p.type==='chomper') {
+        if (!p.chState) { p.chState = 'idle'; p.chT = 0; }
+        const px = p.col*CW + CW/2;
+        const inReach = z => z.row===p.row && z.type!=='boss' && !z.eaten && z.x>px-10 && z.x<px+CHOMP_RANGE;
+        if (p.chState==='idle') {                       // 待機：有殭屍進入範圍 → 張嘴蓄力
+          if (zombies.some(inReach)) { p.chState = 'open'; p.chT = CHOMP_OPEN; }
+        } else if (p.chState==='open') {                // 張嘴：時間到就咬最前面那隻
+          p.chT -= dt;
+          if (p.chT<=0) {
+            const tg = zombies.filter(inReach).sort((a,b)=>a.x-b.x)[0];
+            if (tg) {
+              let chew = Math.min(CHOMP_CHEW_MAX, CHOMP_CHEW_BASE + (ZTYPES[tg.type].hp || 1)*CHOMP_CHEW_PER_HP);
+              if (tg.type==='giant') {                  // 巨人太大吞不下：只咬傷並推開
+                tg.hp -= CHOMP_GIANT_DMG; tg.flash = 0.4; tg.x = Math.min(COLS*CW+60, tg.x + 50); tg.cause = null;
+                chew = 10; $('message').textContent = '🌺 巨人太大了，食人花只咬傷了牠！';
+              } else {
+                tg.hp = 0; tg.eaten = true; tg.eatX = px + 55; tg.eatY = p.row*CH + CH/2 - 10;   // 被吞掉（由倒下動畫播放被拉進嘴裡）
+              }
+              p.chew = chew; p.chState = 'bite'; p.chT = 0.12; sfx.chomp();
+            } else { p.chState = 'idle'; }              // 殭屍走開了，白蓄力
+          }
+        } else if (p.chState==='bite') {                // 咬下的瞬間
+          p.chT -= dt;
+          if (p.chT<=0) { p.chState = 'chew'; p.chT = p.chew; p.chewTotal = p.chew; p.sndT = 0; }
+        } else if (p.chState==='chew') {                // 咀嚼：不能攻擊，要等嚼完
+          p.chT -= dt; p.sndT = (p.sndT||0) - dt;
+          if (p.sndT<=0) { sfx.chew(); p.sndT = 0.5; }
+          if (p.chT<=0) p.chState = 'idle';
+        }
+      }
+      if (p.type==='magnet') {
+        if (p.magT === undefined) p.magT = 1.5;                 // 剛種下要先充能一下
+        p.magT = Math.max(0, p.magT - dt); p.pull = Math.max(0, (p.pull||0) - dt);
+        if (p.magT <= 0) {
+          const px = p.col*CW + CW/2, py = p.row*CH + CH/2;
+          let best = null, bd = 1e9;
+          zombies.forEach(z => {                                  // 找範圍內「最近」且穿著護具的殭屍
+            if (!ZTYPES[z.type].armor || z.eaten || Math.abs(z.row-p.row) > MAGNET_ROWS) return;
+            const dx = z.x - px;
+            if (dx < -CW*0.5 || dx > MAGNET_RANGE) return;
+            const d = Math.hypot(dx, (z.row-p.row)*CH);
+            if (d < bd) { bd = d; best = z; }
+          });
+          if (best) { stripArmor(best, px, py); p.magT = MAGNET_CD; p.pull = 0.35; sfx.magnet(); }
+        }
+      }
+      if (p.type==='lightning') {
+        if (p.boltT === undefined) { p.boltT = LIGHTNING_FIRST; p.boltMax = LIGHTNING_FIRST; }
+        p.boltT = Math.max(0, p.boltT - dt); p.zap = Math.max(0, (p.zap||0) - dt);
+        if (p.boltT <= 0) {
+          // 全場血量最高的幾隻（沒被別朵閃電花剛劈過的），出現在畫面內才算
+          const cands = zombies.filter(z => !z.eaten && !(z.struck > 0) && z.x < COLS*CW - 10).sort((a,b) => b.hp - a.hp).slice(0, LIGHTNING_TARGETS);
+          if (cands.length) { cands.forEach(strikeLightning); p.boltT = p.boltMax = LIGHTNING_CD; p.zap = 0.3; sfx.thunder(); }
+        }
+      }
+      if (p.type==='catapult') {
+        if (!p.catapultState) { p.catapultState = 'idle'; p.catapultT = 0; }
+        const launchX = p.col*CW + CW/2 + 17;
+        const launchY = p.row*CH + CH/2 - 43;
+        if (p.catapultState === 'idle') {
+          p.shoot -= dt;
+          const target = zombies
+            .filter(z => z.row===p.row && z.x > launchX + 25 && !z.eaten)
+            .sort((a,b) => a.x-b.x)[0];
+          if (target && p.shoot <= 0) {
+            p.catapultTargetX = target.x;
+            p.catapultState = 'loading'; p.catapultT = 0; p.kick = 1;
+          }
+        } else if (p.catapultState === 'loading') {
+          p.catapultT += dt;
+          if (p.catapultT >= 0.28) { p.catapultState = 'loaded'; p.catapultT = 0; }
+        } else if (p.catapultState === 'loaded') {
+          p.catapultT += dt;
+          if (p.catapultT >= 0.24) { p.catapultState = 'throw'; p.catapultT = 0; }
+        } else if (p.catapultState === 'throw') {
+          p.catapultT += dt;
+          if (p.catapultT >= 0.18) {
+            const target = zombies
+              .filter(z => z.row===p.row && z.x > launchX + 10 && !z.eaten)
+              .sort((a,b) => a.x-b.x)[0];
+            if (target) {
+              const tx = Math.max(launchX + 65, target.x - target.size*0.12);
+              const distance = tx - launchX;
+              const duration = Math.max(0.42, Math.min(1.15, distance / 430));
+              peas.push({
+                x: launchX, y: launchY, row:p.row, speed:0, damage:75, kind:'catapult',
+                arcStartX:launchX, arcStartY:launchY, arcTargetX:tx,
+                arcAge:0, arcDuration:duration, arcHeight:Math.min(145, 70 + distance*0.12),
+                arcBaseY:launchY
+              });
+            }
+            p.catapultState = 'idle'; p.catapultT = 0; p.shoot = 2.7; sfx.shoot();
+          }
+        }
+      }
+      if (p.type==='laser') {
+        p.shoot -= dt;
+        p.laserFlash = Math.max(0, (p.laserFlash||0) - dt);
+        const px = p.col*CW + CW/2;
+        const targets = zombies.filter(z => z.row===p.row && z.x > px + 8 && !z.eaten);
+        if (targets.length && p.shoot<=0) {
+          targets.forEach(z => {
+            z.hp -= LASER_DAMAGE * (ZTYPES[z.type].shotResist ?? 1);
+            z.flash = 0.18; z.cause = null;
+          });
+          p.laserFlash = LASER_FLASH_TIME;
+          p.shoot = LASER_CD;
+          beep(950, 0.16, 'sawtooth', 0.045, 260);
+        }
+      }
+      if (p.type==='luanne') {
+        const target = zombies.some(z=>z.row===p.row && z.x>p.col*CW+55);
+        p.shoot -= dt;
+        if (target && p.shoot<=0) {
+          // 滷安每次齊射兩顆包子，略微上下錯開；兩顆都會各自造成 40 傷害
+          peas.push(
+            {x:p.col*CW+76,y:p.row*CH+CH/2-12,row:p.row,speed:320,damage:40,kind:'star'},
+            {x:p.col*CW+76,y:p.row*CH+CH/2+12,row:p.row,speed:320,damage:40,kind:'star'}
+          );
+          p.kick=1; sfx.shoot();
+          p.shoot=1.8;
+        }
+      }
+    });
+    peas.forEach(p => {
+      if (p.kind === 'catapult') {
+        p.arcAge += dt;
+        const q = Math.min(1, p.arcAge / p.arcDuration);
+        p.x = p.arcStartX + (p.arcTargetX - p.arcStartX) * q;
+        p.y = p.arcBaseY - Math.sin(Math.PI*q) * p.arcHeight;
+      } else {
+        p.x += p.speed*dt;
+      }
+    });
+    for (let i=peas.length-1;i>=0;i--) {
+  const p=peas[i];
+
+  // 投石器：落地時造成範圍傷害
+  if (p.kind === 'catapult') {
+    if (p.arcAge >= p.arcDuration) {
+      const SPLASH_RADIUS = 65; // 爆炸半徑，可自行調整
+
+      zombies.forEach(z => {
+        if (
+          z.row === p.row &&
+          !z.eaten &&
+          Math.abs(z.x - p.x) <= SPLASH_RADIUS
+        ) {
+          z.hp -= p.damage * (ZTYPES[z.type].shotResist ?? 1);
+          z.flash = 0.18;
+          z.cause = null;
+        }
+      });
+
+      peas.splice(i,1);
+    }
+    continue;
+  }
+
+  // 其他植物維持原本的單體攻擊
+  let hit=-1;
+  for (let j=0;j<zombies.length;j++) {
+    if (zombies[j].row===p.row && Math.abs(zombies[j].x-p.x)<zombies[j].size*0.25) {
+      hit=j;
+      break;
+    }
+  }
+
+  if (hit>=0) {
+    zombies[hit].hp -= p.damage * (ZTYPES[zombies[hit].type].shotResist ?? 1);
+    zombies[hit].flash=0.12;
+    zombies[hit].cause=null;
+    if (p.kind==='ice') zombies[hit].slow=ICE_SLOW_TIME;
+    peas.splice(i,1);
+  }
+  else if (p.x>COLS*CW+20) {
+    peas.splice(i,1);
+  }
+}
+    // 割草機：啟動後一路向右衝，撞到的殭屍全部清掉（殭屍王只受重創）
+    mowers.forEach(m => {
+      if (!m || m.state!=='run') return;
+      m.x += MOWER_SPEED*dt;
+      zombies.forEach(z => {
+        if (z.row===m.row && !z.mowed && z.x>m.x-30 && z.x<m.x+60) {
+          z.mowed = true; z.hp -= (z.type==='boss' ? 2000 : 99999); z.flash = 0.3; z.cause = 'blast';
+        }
+      });
+      if (m.x > COLS*CW + 80) mowers[m.row] = null;   // 衝出草地就用完了
+    });
+    // 球球：下落 → 落地瞬間壓扁範圍內的殭屍 → 停留一下後消失
+    for (let i=drops.length-1;i>=0;i--) {
+      const d=drops[i];
+      if (d.state==='fall') {
+        d.vy += 1800*dt; d.y += d.vy*dt;
+        if (d.y >= d.ty) {
+          d.y = d.ty; d.state='land'; d.life=0.6; shake=0.35; sfx.boom();
+          const cx = d.col*CW + CW/2;
+          zombies.forEach(z => {
+            if (Math.abs(z.row-d.row)<=BALL_ROWS && Math.abs(z.x-cx)<CW*BALL_RANGE) { z.hp -= BALL_DAMAGE * ZTYPES[z.type].squash; z.flash = 0.3; z.cause = 'squash'; }
+          });
+        }
+      } else { d.life -= dt; if (d.life<=0) drops.splice(i,1); }
+    }
+    for (let i=zombies.length-1;i>=0;i--) {
+      const z=zombies[i];
+      // 已經啟動的滷安陷阱：殭屍踏進陷阱所在格時引爆
+      const trapIndex = plants.findIndex(p =>
+        p.type==='luanneTrap' && p.armTimer<=0 && p.row===z.row &&
+        Math.abs(z.x-(p.col*CW+CW/2)) <= CW*0.55
+      );
+      if (trapIndex >= 0) {
+        const trap = plants.splice(trapIndex,1)[0];
+        const tx = trap.col*CW+CW/2, ty = trap.row*CH+CH/2;
+        explosions.push({x:tx,y:ty,life:0.42,maxLife:0.42});
+        shake = Math.max(shake,0.18);
+        beep(130,.28,'sawtooth',.12,35);
+        // 傷害隨波次提高，確保普通殭屍會被炸掉；較硬的特殊殭屍可能存活
+        const trapDamage = 200 + Math.floor(elapsed/35)*50;
+        zombies.forEach(target => {
+          if (target.row===trap.row && Math.abs(target.x-tx)<=CW*TRAP_RANGE) {
+            target.hp -= trapDamage;
+            target.flash = 0.3; target.cause = 'blast';
+          }
+        });
+        $('message').textContent='💥 滷安陷阱引爆！同一列前後一格都受到爆炸傷害！';
+      }
+
+      const mw = mowers[z.row];   // 殭屍衝到最左邊 → 啟動這一列的割草機
+      if (z.x < 30 && mw && mw.state==='idle') { mw.state = 'run'; sfx.mower(); $('message').textContent = '🚜 割草機啟動！'; }
+      const hopping = (z.hop||0) > 0;
+      // 睡眠中的殭屍固定在床墊上 20 秒；仍然會受到豌豆、拳擊、火焰等傷害
+      z.sleepTimer = Math.max(0, (z.sleepTimer||0) - dt);
+      let blocker = hopping ? null : plants.find(p=>p.type!=='luanneTrap' && p.row===z.row && z.x-22 < p.col*CW+82 && z.x>p.col*CW+20);
+      if (blocker && blocker.type==='emmaBed' && !z.sleepUsed && !hopping && !z.sleepTimer && !ZTYPES[z.type].noSleep) {
+        // 每張床墊只負責讓第一隻踩上來的殭屍睡著
+        if (!blocker.sleepingZombie) {
+          blocker.sleepingZombie = z;
+          z.sleepUsed = true;
+          z.sleepTimer = EMMA_BED_SLEEP_TIME;
+          z.x = blocker.col*CW + CW/2 + 18;
+          z.sleepBed = blocker;
+          $('message').textContent = `🛏️ 殭屍躺上 Emma 床墊睡著了！趁這 20 秒攻擊牠！`;
+        }
+      }
+      const sleeping = (z.sleepTimer||0) > 0;
+      if (blocker && z.type==='vaulter' && !z.jumped && !sleeping) {   // 撐竿跳過第一株植物
+        z.jumped = true; z.hop = 0.55; z.hopFrom = z.x; z.hopTo = blocker.col*CW + 14; z.speed *= 0.43; sfx.jump(); blocker = null;
+      }
+      z.flash=Math.max(0,(z.flash||0)-dt); z.eating=!!blocker && !sleeping;
+      const slowed = (z.slow||0) > 0; z.slow = Math.max(0,(z.slow||0)-dt);   // 被冰凍減速中
+      z.burn = Math.max(0,(z.burn||0)-dt); z.struck = Math.max(0,(z.struck||0)-dt);
+      if (hopping) { z.hop = Math.max(0, z.hop-dt); z.x = z.hopFrom + (z.hopTo-z.hopFrom)*(1 - z.hop/0.55); }
+      if (z.type==='dancer' && z.x < COLS*CW - 20) {   // 舞王進入畫面後，定時召喚伴舞
+        z.summonT = (z.summonT ?? 2) - dt;
+        if (z.summonT <= 0 && (z.summons||0) < DANCER_MAX_SUMMONS) {
+          z.summonT = DANCER_SUMMON_EVERY; z.summons = (z.summons||0) + 1; sfx.dance();
+          [z.row-1, z.row+1].filter(r => r>=0 && r<ROWS).forEach(r => spawnZombie('normal', r, 0, Math.min(COLS*CW+35, z.x+60)));
+          $('message').textContent = '🕺 舞王殭屍召喚了伴舞！';
+        }
+      }
+      if (z.type==='boss') {   // 殭屍王定時召喚手下
+        z.summonT = (z.summonT ?? 6) - dt;
+        if (z.summonT<=0) {
+          z.summonT = 9; sfx.horn();
+          [z.row-1, z.row+1].filter(r => r>=0 && r<ROWS).forEach(r => spawnZombie(Math.random()<0.5 ? 'cone' : 'normal', r, 0, Math.min(COLS*CW+35, z.x+70)));
+          $('message').textContent = '👑 殭屍王召喚了手下！';
+        }
+      }
+      if (blocker && !sleeping) {
+        z.bite-=dt*(slowed ? ICE_SLOW_RATE : 1);
+        if (z.bite<=0) { blocker.hp-=z.biteDmg; z.bite=0.8; }
+        if (blocker.hp<=0) plants.splice(plants.indexOf(blocker),1);
+      } else if (!hopping && !sleeping) z.x-=z.speed*(slowed ? ICE_SLOW_RATE : 1)*dt;
+      if (z.hp<=0) {
+        corpses.push({type:z.type, size:z.size, x:z.x, y:z.y, tx:z.eatX, ty:z.eatY, cause: z.eaten ? 'eaten' : (z.cause || ((z.burn||0)>0 ? 'burn' : 'fall')), age:0});
+        zombies.splice(i,1); kills++; if (!z.eaten) sfx.die(); if(kills%5===0) sun+=25;
+        almanacKills[z.type] = (almanacKills[z.type]||0) + 1; saveAlmanac();   // 圖鑑：累計擊退數
+      }
+      else if (z.x<5 && !mowers[z.row]) { endGame(false); return; }   // 這一列沒有割草機了才算輸
+    }
+    for (let i=bolts.length-1;i>=0;i--) { bolts[i].life -= dt; if (bolts[i].life <= 0) bolts.splice(i,1); }
+    for (let i=armorFx.length-1;i>=0;i--) { armorFx[i].age += dt; if (armorFx[i].age > 0.45) armorFx.splice(i,1); }
+    for (let i=corpses.length-1;i>=0;i--) { corpses[i].age += dt; if (corpses[i].age > DEATH_T) corpses.splice(i,1); }
+    for (let i=explosions.length-1;i>=0;i--) {
+      explosions[i].life -= dt;
+      if (explosions[i].life<=0) explosions.splice(i,1);
+    }
+    for (let i=suns.length-1;i>=0;i--) {
+      const s=suns[i]; s.life-=dt; s.phase+=dt*3;
+      if (s.falling) { s.y=Math.min(s.baseY+85,s.y+35*dt); if(s.y>=s.baseY+85)s.falling=false; }
+      if (s.life<=0) suns.splice(i,1);
+    }
+    if (elapsed>=WIN_TIME && zombies.length===0) { endGame(true); return; }
+    updateHUD(); updateButtons();
+  }
+
+  function drawStar(x, y) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(x / 20);
+    ctx.beginPath();
+    for (let i=0;i<10;i++) {
+      const r = i%2===0 ? 13 : 6;
+      const a = i*Math.PI/5 - Math.PI/2;
+      ctx.lineTo(Math.cos(a)*r, Math.sin(a)*r);
+    }
+    ctx.closePath();
+    ctx.fillStyle='#ffcc00'; ctx.fill();
+    ctx.strokeStyle='#fff3a3'; ctx.lineWidth=2; ctx.stroke();
+    ctx.restore();
+  }
+
+  // 冰凍效果：只把殭屍有顏色的部分染成淺藍（用離屏畫布，不會染到透明背景）
+  const tintCv = document.createElement('canvas'), tintCtx = tintCv.getContext('2d');
+  function drawTinted(img, w, h, color) {
+    tintCv.width = Math.ceil(w); tintCv.height = Math.ceil(h);
+    tintCtx.drawImage(img, 0, 0, w, h);
+    tintCtx.globalCompositeOperation = 'source-atop';
+    tintCtx.fillStyle = color; tintCtx.fillRect(0, 0, w, h);
+    ctx.drawImage(tintCv, -w/2, -h, w, h);
+  }
+  // 動畫用：以腳底中心為支點，可旋轉／壓扁拉長／受擊閃白
+  function drawSprite(img, cx, bottom, w, h, rot, sx, sy, flash, deco, tint) {
+    ctx.save();
+    ctx.translate(cx, bottom); ctx.rotate(rot); ctx.scale(sx, sy);
+    ctx.drawImage(img, -w/2, -h, w, h);
+    if (tint) drawTinted(img, w, h, tint);
+    if (deco) deco(w, h);   // 沒有專屬圖片時畫的配件（路障、鐵桶…）
+    if (flash > 0) {
+      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = flash;
+      ctx.drawImage(img, -w/2, -h, w, h);
+    }
+    ctx.restore();
+  }
+
+  // 放置預覽：綠＝可種、紅＝不能種；球球顯示會壓到的範圍；鏟子標出要移除的植物
+  function drawPreview() {
+    if (!hover || !running || paused) return;
+    const {col, row} = hover, x0 = col*CW, y0 = row*CH;
+    const occupied = plants.some(p => p.col===col && p.row===row);
+    if (shovel) {
+      ctx.fillStyle = occupied ? 'rgba(255,80,80,.35)' : 'rgba(0,0,0,.1)'; ctx.fillRect(x0,y0,CW,CH);
+      return;
+    }
+    if (selected === 'qiuqiu') {
+      const ok = !((cd.qiuqiu||0) > 0) && sun >= costs.qiuqiu, cx = x0 + CW/2;
+      const l = Math.max(0, cx - CW*BALL_RANGE), r = Math.min(COLS*CW, cx + CW*BALL_RANGE);
+      const tp = Math.max(0, (row-BALL_ROWS)*CH), bt = Math.min(ROWS*CH, (row+BALL_ROWS+1)*CH);
+      ctx.fillStyle = ok ? 'rgba(255,170,40,.28)' : 'rgba(255,60,60,.25)'; ctx.fillRect(l, tp, r-l, bt-tp);
+      ctx.strokeStyle = ok ? 'rgba(255,140,0,.9)' : 'rgba(220,40,40,.9)'; ctx.lineWidth = 3;
+      ctx.setLineDash([10,6]); ctx.strokeRect(l, tp, r-l, bt-tp); ctx.setLineDash([]);
+      return;
+    }
+    const ok = !occupied && !((cd[selected]||0) > 0) && sun >= costs[selected];
+    ctx.fillStyle = ok ? 'rgba(120,255,120,.3)' : 'rgba(255,70,70,.3)'; ctx.fillRect(x0,y0,CW,CH);
+    if (selected==='puncher') { ctx.fillStyle='rgba(255,210,70,.18)'; ctx.fillRect(x0+CW/2, y0+8, Math.min(PUNCH_RANGE, COLS*CW-x0-CW/2), CH-16); }
+    if (selected==='chomper') { ctx.fillStyle='rgba(230,90,160,.16)'; ctx.fillRect(x0+CW/2, y0+8, Math.min(CHOMP_RANGE, COLS*CW-x0-CW/2), CH-16); }
+    if (selected==='laser') {
+      ctx.fillStyle='rgba(80,220,255,.13)';
+      ctx.fillRect(x0+CW/2, y0+8, COLS*CW-x0-CW/2, CH-16);
+    }
+    if (selected==='magnet')  {
+      const l = x0, r = Math.min(COLS*CW, x0+CW/2+MAGNET_RANGE), tp = Math.max(0,(row-MAGNET_ROWS)*CH), bt = Math.min(ROWS*CH,(row+MAGNET_ROWS+1)*CH);
+      ctx.fillStyle='rgba(111,155,255,.14)'; ctx.fillRect(l, tp, r-l, bt-tp);
+    }
+    if (selected==='flamer')  { ctx.fillStyle='rgba(255,130,40,.16)'; ctx.fillRect(x0+CW*0.78, y0+14, Math.min(FLAME_RANGE, COLS*CW-x0-CW*0.78), CH-28); }
+    const img = images[selected] || images.chomperIdle;
+    if (ok && img && img.complete && img.naturalWidth > 0) {      // 半透明的植物預覽圖
+      const sz = plantSize[selected];
+      const asp = img.naturalWidth/img.naturalHeight, dw = asp>1 ? sz : sz*asp, dh = asp>1 ? sz/asp : sz;
+      ctx.globalAlpha = 0.55; ctx.drawImage(img, x0+CW/2-dw/2, y0+CH/2+sz/2-dh, dw, dh); ctx.globalAlpha = 1;
+    }
+  }
+
+  // 割草機：有 images/mower.png 就用圖片，沒有就畫一台紅色小割草機
+  function drawMowers(t) {
+    mowers.forEach(m => {
+      if (!m) return;
+      const y = m.row*CH + CH/2 + 24 + (m.state==='run' ? Math.sin(t*70)*1.5 : 0);   // 啟動後會震動
+      const img = images.mower;
+      if (img && img.complete && img.naturalWidth > 0) {
+        const sz = MOWER_SIZE, asp = img.naturalWidth/img.naturalHeight, dw = asp>1 ? sz : sz*asp, dh = asp>1 ? sz/asp : sz;
+        drawSprite(img, m.x, y + 8, dw, dh, 0, 1, 1, 0);
+      } else {
+        ctx.save(); ctx.translate(m.x, y); ctx.scale(MOWER_SIZE/70, MOWER_SIZE/70);   // 預設割草機也跟著 MOWER_SIZE 縮放
+        ctx.strokeStyle='#555'; ctx.lineWidth=4; ctx.beginPath(); ctx.moveTo(-26,-18); ctx.lineTo(-46,-48); ctx.lineTo(-32,-52); ctx.stroke();
+        ctx.fillStyle='#d93a2b'; ctx.fillRect(-28,-28,54,28);
+        ctx.fillStyle='#f2776b'; ctx.fillRect(-28,-28,54,7);
+        ctx.fillStyle='#bdbdbd'; ctx.fillRect(26,-10,14,9);
+        ctx.fillStyle='#222';
+        ctx.beginPath(); ctx.arc(-17,3,9,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(17,3,9,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='#888';
+        ctx.beginPath(); ctx.arc(-17,3,4,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(17,3,4,0,Math.PI*2); ctx.fill();
+        ctx.restore();
+      }
+    });
+  }
+
+  // 殭屍倒下動畫：依死因不同——一般＝向後倒、拳擊＝被打飛倒地、球球＝壓扁、陷阱／割草機＝炸飛旋轉、火焰＝燒焦倒下
+  function drawCorpses() {
+    corpses.forEach(c => {
+      const zt = ZTYPES[c.type];
+      let img = images[zt.img], deco = null;
+      if (!(img && img.complete && img.naturalWidth > 0)) { img = images.zombie; deco = zt.deco; }
+      if (!(img && img.complete && img.naturalWidth > 0)) return;
+      const p = Math.min(1, c.age/DEATH_T), w = c.size, bottom = c.y + ZOMBIE_SIZE/2;
+      const fade = p < 0.55 ? 1 : Math.max(0, 1 - (p-0.55)/0.45), e = 1 - (1-p)*(1-p);   // e：先快後慢
+      ctx.globalAlpha = fade;
+      if (c.cause === 'squash') {
+        const k = Math.min(1, p*5);
+        drawSprite(img, c.x, bottom, w, w, 0, 1 + 0.4*k, 1 - 0.88*k, 0, deco, null);
+      } else if (c.cause === 'eaten') {   // 被食人花吞掉：往嘴巴方向被拉進去、縮小、變暗
+        const q = Math.min(1, c.age/0.4), sc = 1 - 0.8*q;
+        ctx.globalAlpha = q < 0.7 ? 1 : Math.max(0, 1 - (q-0.7)/0.3);
+        if (c.age < 0.45) {
+          const b = bottom + ((c.ty + 20) - bottom)*q;
+          drawSprite(img, c.x + (c.tx - c.x)*q, b, w*sc, w*sc, q*0.9, 1, 1, 0, deco, 'rgba(0,0,0,0.45)');
+        }
+      } else if (c.cause === 'blast') {
+        ctx.save();
+        ctx.translate(c.x + 70*p, bottom - w/2 - 90*Math.sin(Math.min(1, p*1.3)*Math.PI));
+        ctx.rotate(p*9);
+        ctx.drawImage(img, -w/2, -w/2, w, w);
+        ctx.restore();
+      } else {
+        const burn = c.cause === 'burn', slide = (c.cause === 'punch' ? 70 : 25)*e;
+        drawSprite(img, c.x + slide, bottom, w, w, e*1.45, 1, 1, 0, deco, burn ? 'rgba(25,15,5,0.75)' : null);
+      }
+      ctx.globalAlpha = 1;
+    });
+  }
+
+  // 食人花依狀態選圖；該狀態的圖還沒放，就退回待機圖
+  function chomperImg(p) {
+    const key = ({open:'chomperOpen', bite:'chomperClosed', chew:'chomperClosed'})[p.chState] || 'chomperIdle';
+    const ok = i => i && i.complete && i.naturalWidth > 0;
+    return ok(images[key]) ? images[key] : (ok(images.chomperIdle) ? images.chomperIdle : images[key]);
+  }
+
+  // 噴火草的火焰：一串由小變大、忽明忽暗的火球
+  function drawFlames(t) {
+    plants.forEach(p => {
+      if (p.type!=='flamer' || p.fireState!=='on') return;
+      const x0 = p.col*CW + CW*0.78, y0 = p.row*CH + CH/2 + 4;
+      for (let i=0;i<14;i++) {
+        const k = i/13, x = x0 + k*(FLAME_RANGE-30), y = y0 + Math.sin(t*26 + i*1.7)*8*k - k*6, r = 12 + k*26 + Math.sin(t*30 + i)*3;
+        const g = ctx.createRadialGradient(x,y,1,x,y,r);
+        g.addColorStop(0,'rgba(255,255,200,0.95)'); g.addColorStop(0.4,'rgba(255,170,40,0.75)'); g.addColorStop(1,'rgba(220,40,10,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+      }
+    });
+  }
+
+  // 被磁鐵吸走的護具：邊旋轉邊飛向磁鐵，快到時淡出
+  function drawArmorFx() {
+    armorFx.forEach(f => {
+      const q = Math.min(1, f.age/0.45), e = q*q;
+      const x = f.x + (f.tx - f.x)*e, y = f.y + (f.ty - f.y)*e - Math.sin(q*Math.PI)*40;
+      ctx.save(); ctx.globalAlpha = q < 0.8 ? 1 : (1-q)/0.2;
+      ctx.translate(x, y); ctx.rotate(q*10);
+      ctx.font='34px "Apple Color Emoji","Segoe UI Emoji",sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(f.icon, 0, 0); ctx.restore();
+    });
+  }
+
+  // 閃電：從畫面最上方劈到目標身上的鋸齒光束（每道雷各有自己的形狀）
+  function drawBolts() {
+    bolts.forEach(b => {
+      const a = Math.max(0, b.life/b.maxLife), topY = -GY - 20, endY = b.y - 20, N = 9;
+      const rnd = i => { const v = Math.sin(b.seed + i*12.9898)*43758.5453; return v - Math.floor(v); };
+      const bimg = images.lightningBolt;
+      if (bimg && bimg.complete && bimg.naturalWidth > 0) {   // 有自己的雷電圖：從天上拉到殭屍身上，隨機左右翻轉、閃爍
+        const w = BOLT_IMG_WIDTH, flip = rnd(99) > 0.5 ? -1 : 1, flick = 0.75 + 0.25*Math.sin(b.life*90 + b.seed);
+        ctx.save(); ctx.globalAlpha = Math.min(1, a*flick*1.2); ctx.globalCompositeOperation = BOLT_BLEND;
+        ctx.translate(b.x, 0); ctx.scale(flip, 1);
+        ctx.drawImage(bimg, -w/2, topY, w, endY - topY);
+        ctx.restore();
+        return;
+      }
+      const pts = [];
+      for (let i=0;i<=N;i++) {
+        const k = i/N, jx = (i===0 || i===N) ? 0 : (rnd(i) - 0.5)*56;
+        pts.push([b.x + jx, topY + (endY - topY)*k]);
+      }
+      const path = () => { ctx.beginPath(); pts.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.stroke(); };
+      ctx.save(); ctx.globalAlpha = a; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.shadowColor = '#7fd0ff'; ctx.shadowBlur = 24; ctx.strokeStyle = '#bfe8ff'; ctx.lineWidth = 12; path();
+      ctx.shadowBlur = 8; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 4; path();
+      ctx.restore();
+    });
+  }
+
+  function draw() {
+    const t = animClock;   // 動畫時鐘：暫停時不前進，角色會定格
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    const lawn = images.lawn;
+    const hasLawn = lawn && lawn.complete && lawn.naturalWidth > 0;
+    if (hasLawn) {
+      // 照片鋪滿整個畫布
+      ctx.drawImage(lawn, 0, 0, canvas.width, canvas.height);
+    } else {
+      ctx.fillStyle='#8bc85c'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    }
+    // 之後所有遊戲物件都以「草地格子左上角」為原點
+    const shk = shake>0 ? 12*shake/0.35 : 0;   // 球球落地時的畫面震動
+    ctx.save(); ctx.translate(GX + (Math.random()-0.5)*shk, GY + (Math.random()-0.5)*shk);
+    for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) {
+      if (hasLawn) {
+        ctx.strokeStyle='rgba(255,255,255,0.25)'; ctx.lineWidth=1; ctx.strokeRect(c*CW,r*CH,CW,CH);
+      } else {
+        ctx.fillStyle=(r+c)%2?'#8ac85c':'#94d267'; ctx.fillRect(c*CW,r*CH,CW,CH);
+        ctx.strokeStyle='#6da84a'; ctx.lineWidth=1; ctx.strokeRect(c*CW,r*CH,CW,CH);
+      }
+    }
+    drawMowers(t);
+    drawPreview();
+    plants.forEach(p=>{
+      const x=p.col*CW+CW/2,y=p.row*CH+CH/2;
+      ctx.font='48px "Apple Color Emoji","Segoe UI Emoji",sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      const img = p.type==='chomper' ? chomperImg(p) : images[p.type];   // 食人花依狀態換圖：待機／張嘴／閉嘴
+      let lunge = (p.type==='puncher' && p.punch>0) ? Math.sin((1 - p.punch/0.28)*Math.PI)*40 : 0;   // 出拳時往前衝
+      if (p.type==='chomper') lunge = p.chState==='open' ? 22*(1 - p.chT/CHOMP_OPEN) : p.chState==='bite' ? 35 : 0;   // 張嘴時前傾、咬下時前衝
+
+      if (p.type==='catapult') {
+        const stateImg = p.catapultState === 'loaded' ? images.catapultLoaded
+          : p.catapultState === 'throw' ? images.catapultThrow : images.catapultIdle;
+        const fallback = '🪨';
+        const s = plantSize.catapult;
+        if (stateImg && stateImg.complete && stateImg.naturalWidth > 0) {
+          const asp = stateImg.naturalWidth/stateImg.naturalHeight;
+          const dw = asp>1 ? s : s*asp, dh = asp>1 ? s/asp : s;
+          drawSprite(stateImg, x, y+s/2, dw, dh, 0, 1, 1, 0);
+        } else {
+          ctx.font='58px "Apple Color Emoji","Segoe UI Emoji",sans-serif';
+          ctx.fillText(fallback, x, y+5);
+        }
+        // 裝填時，石彈從投石器前方滑到托盤上；裝填完成後停在托盤，投出瞬間消失
+        if (p.catapultState === 'loading') {
+          const q = Math.min(1, p.catapultT/0.28);
+          const bx = x - 10 - 30*q, by = y - 1 - 5*q;
+          const rock = images.catapultProjectile;
+          if (rock && rock.complete && rock.naturalWidth > 0) {
+            ctx.drawImage(rock, bx-13, by-13, 26, 26);
+          } else {
+            ctx.font='22px sans-serif'; ctx.fillText('🪨', bx, by);
+          }
+        }
+      } else if (p.type==='emmaBed') {
+        if (img && img.complete && img.naturalWidth > 0) {
+          const s = plantSize.emmaBed, asp = img.naturalWidth/img.naturalHeight;
+          const dw = asp>1 ? s : s*asp, dh = asp>1 ? s/asp : s;
+          drawSprite(img, x, y+s/2, dw, dh, 0, 1, 1, 0);
+        } else {
+          ctx.font='58px "Apple Color Emoji","Segoe UI Emoji",sans-serif';
+          ctx.fillText('🛏️',x,y+8);
+        }
+      } else if (p.type==='luanneTrap') {
+        if (p.armTimer>0) {
+          // 尚未啟動：埋在土裡，只露出一點土堆
+          ctx.fillStyle='#80552d';
+          ctx.beginPath(); ctx.ellipse(x,y+20,25,10,0,0,Math.PI*2); ctx.fill();
+          ctx.fillStyle='#a87943';
+          ctx.beginPath(); ctx.ellipse(x-3,y+16,18,7,0,0,Math.PI*2); ctx.fill();
+          ctx.fillStyle='#e8f0c2'; ctx.font='12px sans-serif';
+          ctx.fillText('埋藏中',x,y+39);
+        } else if (img && img.complete && img.naturalWidth>0) {
+          drawSprite(img,x,y+plantSize.luanneTrap/2,plantSize.luanneTrap,plantSize.luanneTrap,0,1,1,0);
+        } else {
+          ctx.font='46px "Apple Color Emoji","Segoe UI Emoji",sans-serif';
+          ctx.fillText('🪤',x,y+8);
+        }
+      } else if (img && img.complete && img.naturalWidth > 0) {
+        const s = plantSize[p.type], ph = p.col*0.9 + p.row*1.7, k = p.kick||0;
+        let sx = 1 + 0.12*k, sy = 1 - 0.12*k;              // 射擊時的後座力（壓扁再彈回）
+        const rot = Math.sin(t*2 + ph) * 0.05;             // 左右輕輕搖擺
+        sy *= 1 + Math.sin(t*3 + ph) * 0.025;              // 呼吸般的上下伸縮
+        if (p.type==='sunflower' && p.produce < 1.2) {     // 快產陽光時抖動
+          const g = 1 + 0.08*Math.sin(t*20); sx *= g; sy *= g;
+        }
+        if (p.type==='chomper' && p.chState==='chew') { const j = Math.sin(t*14); sx *= 1 + 0.07*j; sy *= 1 - 0.07*j; }   // 咀嚼：一鼓一縮
+        if (p.type==='chomper' && p.chState==='bite') { sx *= 0.9; sy *= 1.1; }
+        if (p.type==='lightning' && p.zap>0) { const j = Math.sin((1 - p.zap/0.3)*Math.PI); sx *= 1 + 0.18*j; sy *= 1 - 0.12*j; }   // 劈雷時一縮一脹
+        if (p.type==='magnet' && p.pull>0) { const j = Math.sin((1 - p.pull/0.35)*Math.PI); sx *= 1 + 0.15*j; sy *= 1 - 0.1*j; }   // 吸東西時一縮一脹                                          // 咬下瞬間被拉長
+        const asp = img.naturalWidth / img.naturalHeight, dw = asp>1 ? s : s*asp, dh = asp>1 ? s/asp : s;   // 保持圖片原本比例
+        drawSprite(img, x + lunge, y + s/2, dw, dh, rot + lunge*0.006, sx, sy, 0);
+      } else if (p.type==='iceshooter' || p.type==='puncher' || p.type==='flamer' || p.type==='chomper' || p.type==='magnet' || p.type==='laser' || p.type==='lightning' || p.type==='catapult') {   // 還沒放圖片時的替代圖
+        ctx.font='54px "Apple Color Emoji","Segoe UI Emoji",sans-serif';
+        ctx.fillText(p.type==='chomper' ? ({idle:'🌺', open:'😮', bite:'😬', chew:'😋'})[p.chState||'idle'] : ({iceshooter:'❄️', puncher:'🥊', flamer:'🔥', magnet:'🧲', laser:'🔦', lightning:'⚡', catapult:'🪨'})[p.type], x + lunge, y+4);
+      }
+      if (p.type==='chomper' && p.chState==='chew') {   // 咀嚼剩餘時間條（橘色）
+        const w = 44, by = y + plantSize.chomper/2 - 12;
+        ctx.fillStyle='rgba(0,0,0,0.45)'; ctx.fillRect(x-w/2, by, w, 5);
+        ctx.fillStyle='#ffb13b'; ctx.fillRect(x-w/2, by, w*Math.max(0, p.chT/p.chewTotal), 5);
+      }
+      if (p.type==='lightning' && p.boltT > 0) {   // 雷擊充能進度條（黃色）
+        const w = 44, by = y + plantSize.lightning/2 - 12;
+        ctx.fillStyle='rgba(0,0,0,0.45)'; ctx.fillRect(x-w/2, by, w, 5);
+        ctx.fillStyle='#ffe14a'; ctx.fillRect(x-w/2, by, w*Math.max(0, Math.min(1, 1 - p.boltT/p.boltMax)), 5);
+      }
+      if (p.type==='magnet' && p.magT > 0) {   // 充能進度條（藍色）
+        const w = 44, by = y + plantSize.magnet/2 - 12;
+        ctx.fillStyle='rgba(0,0,0,0.45)'; ctx.fillRect(x-w/2, by, w, 5);
+        ctx.fillStyle='#6f9bff'; ctx.fillRect(x-w/2, by, w*Math.max(0, 1 - p.magT/MAGNET_CD), 5);
+      }
+      const max = maxHpOf[p.type];
+      if(p.hp < max) {
+        const w=48, by = y + plantSize[p.type]/2 - 4;
+        ctx.fillStyle='#572';ctx.fillRect(x-w/2,by,w,5);
+        ctx.fillStyle='#7ee04b';ctx.fillRect(x-w/2,by,w*Math.max(0,p.hp/max),5);
+      }
+    });
+    // 雷射光束：從植物前方一路穿透到該排最右側
+    plants.forEach(p => {
+      if (p.type!=='laser' || !(p.laserFlash>0)) return;
+      const x1 = p.col*CW + CW*0.72, x2 = COLS*CW;
+      const y = p.row*CH + CH/2;
+      const alpha = Math.min(1, p.laserFlash/LASER_FLASH_TIME);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.shadowColor = '#5df4ff'; ctx.shadowBlur = 22;
+      ctx.strokeStyle = '#b8fbff'; ctx.lineWidth = 11;
+      ctx.beginPath(); ctx.moveTo(x1,y); ctx.lineTo(x2,y); ctx.stroke();
+      ctx.shadowBlur = 8; ctx.strokeStyle = '#28dfff'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(x1,y); ctx.lineTo(x2,y); ctx.stroke();
+      ctx.restore();
+    });
+    drawCorpses();
+    zombies.forEach(z=>{
+      ctx.font='48px "Apple Color Emoji","Segoe UI Emoji",sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+      const zt = ZTYPES[z.type];
+      let img = images[zt.img], deco = null;
+      if (!(img && img.complete && img.naturalWidth > 0)) { img = images.zombie; deco = zt.deco; }
+
+      if (img && img.complete && img.naturalWidth > 0) {
+        const w = z.size, spd = z.eating ? 12 : (z.type==='runner' ? 10 : z.type==='dancer' ? 8 : 6);
+        const sleeping = (z.sleepTimer||0) > 0;
+        const bob = sleeping ? 0 : (z.hop||0) > 0 ? -Math.sin((1 - z.hop/0.55)*Math.PI)*80
+                  : z.eating ? 0 : -Math.abs(Math.sin(t*spd + z.phase)) * (z.type==='dancer' ? 12 : 6);
+        const rot = sleeping ? -1.35 : z.eating ? -0.12 + Math.sin(t*spd + z.phase)*0.05
+                             : Math.sin(t*spd + z.phase) * (z.type==='dancer' ? 0.2 : 0.06);
+        drawSprite(img, z.x, z.y + ZOMBIE_SIZE/2 + bob + (sleeping ? 12 : 0), w, w, rot, sleeping ? 1.12 : 1, sleeping ? 0.68 : 1, z.flash > 0 ? 0.6 : 0, deco, (z.burn||0) > 0 ? 'rgba(255,110,30,0.5)' : (z.slow||0) > 0 ? 'rgba(90,190,255,0.5)' : null);
+        if (sleeping) {
+          ctx.save(); ctx.font='bold 22px sans-serif'; ctx.fillStyle='#fff'; ctx.strokeStyle='#426b91'; ctx.lineWidth=3;
+          ctx.strokeText('Zzz', z.x+28, z.y-48); ctx.fillText('Zzz', z.x+28, z.y-48); ctx.restore();
+        }
+      }
+      const hy = z.y + ZOMBIE_SIZE/2 - z.size - 4, bw = z.size*0.46;   // 血條跟著殭屍大小
+      ctx.fillStyle='#542';ctx.fillRect(z.x-bw/2,hy,bw,5);
+      ctx.fillStyle='#ef5547';ctx.fillRect(z.x-bw/2,hy,bw*Math.max(0,z.hp/z.maxHp),5);
+    });
+    drawBolts();
+    drawArmorFx();
+    drawFlames(t);
+    drops.forEach(d=>{
+      const gx = d.col*CW + CW/2, gy = d.row*CH + CH/2 + BALL_SIZE/2 - 10;
+      let sx = 1, sy = 1;
+      if (d.state==='fall') {
+        // 地上的落點陰影：球越近，陰影越大越深
+        const k = Math.min(1, Math.max(0, 1 - (d.ty - d.y)/600));
+        ctx.fillStyle = `rgba(0,0,0,${0.15 + 0.25*k})`;
+        ctx.beginPath(); ctx.ellipse(gx, gy, CW*0.25 + CW*0.3*k, CH*0.08 + CH*0.1*k, 0, 0, Math.PI*2); ctx.fill();
+        sx = 0.92; sy = 1.1;                       // 下落時被拉長
+      } else {
+        const q = 1 - d.life/0.6;                  // 0→1：落地後的進度
+        ctx.strokeStyle = `rgba(255,255,255,${0.7*(1-q)})`; ctx.lineWidth = 6*(1-q) + 1;
+        ctx.beginPath(); ctx.ellipse(gx, gy, CW*(0.4 + 1.2*q), CH*(0.15 + 0.45*q), 0, 0, Math.PI*2); ctx.stroke();
+        const sq = d.life/0.6;                     // 1→0：壓扁後慢慢彈回
+        sx = 1 + 0.35*sq; sy = 1 - 0.45*sq;
+      }
+      const img = images.qiuqiu;
+      if (img && img.complete && img.naturalWidth > 0) {
+        drawSprite(img, gx, d.y + BALL_SIZE/2, BALL_SIZE, BALL_SIZE, 0, sx, sy, 0);
+      } else {
+        // 還沒放圖片時的替代圖：藍色圓球
+        ctx.save(); ctx.translate(gx, d.y + BALL_SIZE/2); ctx.scale(sx, sy);
+        ctx.beginPath(); ctx.arc(0, -BALL_SIZE/2, BALL_SIZE/2, 0, Math.PI*2);
+        ctx.fillStyle='#4aa3ff'; ctx.fill(); ctx.strokeStyle='#1d5fb0'; ctx.lineWidth=4; ctx.stroke();
+        ctx.beginPath(); ctx.arc(-BALL_SIZE*0.15, -BALL_SIZE*0.68, BALL_SIZE*0.12, 0, Math.PI*2);
+        ctx.fillStyle='rgba(255,255,255,0.7)'; ctx.fill();
+        ctx.restore();
+      }
+    });
+    peas.forEach(p=>{
+      if (p.kind==='catapult') {
+        const rock = images.catapultProjectile;
+        if (rock && rock.complete && rock.naturalWidth > 0) {
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.arcAge * 7);
+          ctx.drawImage(rock, -19, -19, 38, 38);
+          ctx.restore();
+        } else {
+          ctx.font='30px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+          ctx.fillText('🪨', p.x, p.y);
+        }
+      } else if (p.kind==='star') {
+        const bimg = images.luanneBullet;
+        if (bimg && bimg.complete && bimg.naturalWidth > 0) {
+          ctx.drawImage(bimg, p.x-15, p.y+(p.yOffset||0)-15, 30, 30);
+        } else {
+          drawStar(p.x, p.y+(p.yOffset||0));
+        }
+      } else if (p.kind==='ice') {
+        ctx.beginPath(); ctx.fillStyle='#7fd8ff'; ctx.arc(p.x,p.y,10,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle='#ffffff'; ctx.lineWidth=2; ctx.stroke();
+      } else {
+        ctx.beginPath();ctx.fillStyle='#2e9c39';ctx.arc(p.x,p.y,9,0,Math.PI*2);ctx.fill();
+        ctx.strokeStyle='#e3ffb5';ctx.lineWidth=1;ctx.stroke();
+      }
+    });
+    explosions.forEach(e=>{
+      const progress = 1 - e.life/e.maxLife;
+      const radius = 18 + progress*(e.r || CW*1.45);
+      ctx.save();
+      ctx.globalAlpha = Math.max(0,1-progress);
+      const grad = ctx.createRadialGradient(e.x,e.y,4,e.x,e.y,radius);
+      grad.addColorStop(0,e.c0 || '#fff7a8'); grad.addColorStop(0.45,e.c1 || '#ff9b28'); grad.addColorStop(1,'rgba(230,45,20,0)');
+      ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(e.x,e.y,radius,0,Math.PI*2); ctx.fill();
+      ctx.restore();
+    });
+    suns.forEach(s=>{
+      const pulse=Math.sin(s.phase)*2;
+      ctx.beginPath();ctx.fillStyle='#ffd52f';ctx.arc(s.x,s.y,17+pulse,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle='#fff3a3';ctx.lineWidth=3;ctx.stroke();
+      ctx.font='18px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#9a6b00';ctx.fillText('☀',s.x,s.y+1);
+    });
+    // grid labels subtly
+    ctx.fillStyle='#355b2b';ctx.font='12px sans-serif';ctx.textAlign='left';
+    for(let r=0;r<ROWS;r++)ctx.fillText(`第${r+1}排`,5,r*CH+14);
+    ctx.restore();
+  }
+
+  // ===== 圖鑑 =====
+  const ALMANAC_HIDE_UNSEEN = false;   // true＝沒擊退過的殭屍顯示成「？？？」剪影（有解鎖感）；false＝全部直接顯示
+  const SAVE_KEY = 'pvz_mini_almanac_v1';
+  let almanacKills = {};               // 各種殭屍的累計擊退數（存在瀏覽器 localStorage，關掉網頁也還在）
+  try { almanacKills = JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch (e) {}
+  function saveAlmanac() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(almanacKills)); } catch (e) {} }
+
+  // 植物資料：順序和工具列相同。img = 圖片代號、emoji = 沒圖片時的替代、desc = 說明
+  const PLANT_INFO = {
+    sunflower:  { emoji:'🌻', img:'sunflower',     desc:'每 10 秒產生一顆陽光。陽光是所有植物的本錢，開局先種幾株。' },
+    peashooter: { emoji:'🌱', img:'peashooter',    desc:'同一列有殭屍時，每 1.25 秒射出一顆豌豆，傷害 25。' },
+    iceshooter: { emoji:'❄️', img:'iceshooter',    desc:`很高冷的滷安射出冰球，傷害 ${ICE_DAMAGE}。命中的殭屍 ${ICE_SLOW_TIME} 秒內速度只剩 ${Math.round(ICE_SLOW_RATE*100)}%，啃咬也變慢。` },
+    wallnut:    { emoji:'🥜', img:'wallnut',       desc:'血量很高，擋在前面吸收殭屍的啃咬，讓後面的植物有時間輸出。' },
+    luanne:     { emoji:'⭐', img:'luanne',        desc:'每 1.8 秒一次發射兩顆包子，每顆傷害 40，單次齊射總傷害 80；子彈圖片可放在 images/luanne_bullet.png。' },
+    puncher:    { emoji:'🥊', img:'puncher',       desc:`近戰。每 ${PUNCH_CD} 秒出拳，傷害 ${PUNCH_DAMAGE}，一拳最多打到前面兩隻，並把牠們打退。` },
+    flamer:     { emoji:'🔥', img:'flamer',        desc:`很暖的滷安噴出約 3 格長的火焰溫暖別人，但對於殭屍們來說她似乎太暖了。範圍內所有殭屍每秒受 ${FLAME_DPS} 傷害。噴 ${FLAME_ON} 秒、休息 ${FLAME_REST} 秒；火焰會融化冰凍。` },
+    chomper:    { emoji:'🌺', img:'chomperIdle',   desc:`可愛的護家小狗，張嘴蓄力後，一口吞掉正前方約 1 格內的一隻殭屍（殭屍王除外）。吞下後要咀嚼一陣子（普通殭屍約 ${Math.round(CHOMP_CHEW_BASE + CHOMP_CHEW_PER_HP)} 秒，越硬的越久），咀嚼時無法攻擊。對巨人只能咬傷 ${CHOMP_GIANT_DMG}。` },
+    qiuqiu:     { emoji:'🔵', img:'qiuqiu',        noHp:true, desc:`可愛的大球球從天而降，壓扁落點周圍上下各 ${BALL_ROWS} 排、左右約 ${BALL_RANGE} 格內的殭屍。一次性，冷卻 ${BALL_CD} 秒。對巨人只有 25% 傷害，殭屍王只有 10%。` },
+    luanneTrap: { emoji:'🪤', img:'luanneTrap',    noHp:true, desc:`埋進土裡 ${TRAP_ARM_TIME} 秒後才會啟動，滷安會跑出來。殭屍踩上去就引爆，同一列前後約 ${TRAP_RANGE} 格都會受到傷害（傷害隨波次提高）。` },
+    emmaBed:   { emoji:'🛏️', img:'emmaBed',         desc:`德國頂級Emma床墊，費用 25 陽光，血量 1500。高機能床墊布套，清爽透氣、不悶熱，透氣防敏，自動調節溫濕度，為您帶來清爽的睡眠。高支撐性棉層使用3D切面技術，提供最好的身體承托，無論側睡、趴睡、或仰躺，都能完美支撐脊椎，讓你睡得舒適健康。第一隻踩上床墊的殭屍（殭屍王除外）會躺下睡著 ${EMMA_BED_SLEEP_TIME} 秒，期間不會移動或啃咬，抗干擾設計讓枕邊人再怎麼啃咬都無法吵醒你。放置後需冷卻 40 秒才能再次選用。` },
+    lightning: { emoji:'⚡', img:'lightning',       desc:`召喚雷電，每 ${LIGHTNING_CD} 秒劈向全場血量最高的 ${LIGHTNING_TARGETS} 隻殭屍。每道雷造成目標最大血量 ${Math.round(LIGHTNING_PCT*100)}% 的傷害（至少 ${LIGHTNING_MIN}），所以殭屍越硬、越後面的波次，威力越大。雷電無視鐵門擋子彈的效果；對殭屍王只有 ${Math.round(LIGHTNING_BOSS_PCT*100)}%。多種幾朵會輪流劈不同的目標。` },
+    laser:     { emoji:'🔦', img:'laser',           desc:`發射一道橫跨整排的雷射，會同時命中前方該排所有殭屍，具有穿透效果。每次命中每隻殭屍造成 ${LASER_DAMAGE} 傷害，發射間隔 ${LASER_CD} 秒。` },
+    catapult:  { emoji:'🪨', img:'catapultIdle',   desc:'拋射型植物。石彈會先滑到投石器托盤上，接著以拋物線飛越空中，打擊同一列前方的殭屍；每發造成 75 傷害，發射間隔約 2.7 秒。圖片依序使用待機、裝填、投出三種動作。' },
+    magnet:    { emoji:'🧲', img:'magnet',          desc:`強力磁鐵。每隔 ${MAGNET_CD} 秒，吸走前方約 ${MAGNET_RANGE/CW} 格、上下各 ${MAGNET_ROWS} 排內最近一隻殭屍的金屬護具（路障、鐵桶、橄欖球頭盔、鐵門），讓牠變回普通殭屍，血量也降到普通水準。對沒穿護具的殭屍和殭屍王沒有效果。` }
+  };
+  // 殭屍資料：badge = 沒有專屬圖片時，貼在普通殭屍圖旁的小標記
+  const ZOMBIE_INFO = {
+    normal:   { badge:'',   desc:'最基本的殭屍，一路走過來啃植物。' },
+    cone:     { badge:'🚧', desc:'頭戴路障，血量是普通殭屍的 2 倍。' },
+    bucket:   { badge:'🪣', desc:'頭戴鐵桶，血量 3.2 倍，走路稍慢。' },
+    runner:   { badge:'💨', desc:'衝得很快、血量很少，專門突破防線。' },
+    giant:    { badge:'💪', desc:'體型巨大，血量 8 倍、啃咬很痛。被球球壓只受 25% 傷害，也不容易被擊退。' },
+    vaulter:  { badge:'🏁', desc:'衝得很快，碰到第一株植物會撐竿跳過去，之後變成普通速度。' },
+    football: { badge:'🏈', desc:'又快又硬，啃咬傷害 32，被球球壓只受 60% 傷害。' },
+    door:     { badge:'🚪', desc:'門板擋掉 65% 的子彈傷害。要靠拳擊、噴火、球球或陷阱對付。' },
+    dancer:   { badge:'🕺', desc:`愛跳舞的殭屍，血量 3 倍、速度偏快。進場後每 ${DANCER_SUMMON_EVERY} 秒召喚上下兩排各一隻伴舞殭屍（最多 ${DANCER_MAX_SUMMONS} 次），要優先解決牠。` },
+    shield:   { badge:'🛡️', desc:'重型鋼盾能擋掉 55% 子彈傷害，血量是普通殭屍的 7 倍，移動較慢。磁鐵草可以吸走盾牌。' },
+    berserker:{ badge:'💢', desc:'狂暴衝鋒型殭屍，速度約為普通殭屍的 2.45 倍，啃咬傷害 42；血量也有 4.2 倍。' },
+    hammer:   { badge:'🔨', desc:'巨錘重裝殭屍，血量是普通殭屍的 12 倍，啃咬傷害 85，幾乎不會被擊退；但移動非常緩慢。' },
+    boss:     { badge:'👑', desc:'最後一波登場。血量極高、啃咬傷害 90，免疫擊退，也不會被 Emma 床墊催眠，每 9 秒召喚兩隻手下。' }
+  };
+  function almanacPic(key, emoji, badge, hidden) {
+    const im = images[key], ok = im && im.complete && im.naturalWidth > 0;
+    const st = hidden ? ' style="filter:brightness(0);opacity:.55"' : '';
+    const inner = ok ? `<img src="${im.src}" alt=""${st}>` : `<span class="emoji"${st}>${emoji}</span>`;
+    return `<div class="pic">${inner}${badge && !hidden ? `<span class="badge">${badge}</span>` : ''}</div>`;
+  }
+  function renderAlmanac(tab) {
+    let html = '';
+    if (tab === 'plants') {
+      for (const id of Object.keys(PLANT_INFO)) {
+        const pi = PLANT_INFO[id];
+        const st = `費用 ${costs[id]}　冷卻 ${cds[id]} 秒` + (pi.noHp ? '' : `　血量 ${maxHpOf[id]}`);
+        html += `<div class="acard">${almanacPic(pi.img, pi.emoji, '', false)}<div><h3>${names[id]}</h3><div class="st">${st}</div><div class="ds">${pi.desc}</div></div></div>`;
+      }
+    } else {
+      for (const id of Object.keys(ZTYPES)) {
+        const zt = ZTYPES[id], zi = ZOMBIE_INFO[id] || { badge:'', desc:'' };
+        const own = images[zt.img] && images[zt.img].complete && images[zt.img].naturalWidth > 0;
+        const kills = almanacKills[id] || 0, hidden = ALMANAC_HIDE_UNSEEN && kills === 0;
+        const pic = almanacPic(own ? zt.img : 'zombie', '🧟', own ? '' : zi.badge, hidden);
+        const st = hidden ? '' : `血量 ${Math.round(200*zt.hp)}～${Math.round(450*zt.hp)}（隨波次提高）　速度 ×${zt.speed}　啃咬 ${zt.bite}<br>累計擊退 ${kills} 隻`;
+        html += `<div class="acard">${pic}<div><h3>${hidden ? '？？？' : zt.name}</h3><div class="st">${st}</div><div class="ds">${hidden ? '還沒有擊退過這種殭屍。' : zi.desc}</div></div></div>`;
+      }
+    }
+    $('almanacList').innerHTML = html;
+    $('tabPlants').classList.toggle('selected', tab === 'plants');
+    $('tabZombies').classList.toggle('selected', tab === 'zombies');
+  }
+  function openAlmanac() {
+    almanacOpen = true; hover = null; dragging = false;   // 開啟圖鑑時遊戲會暫時停住
+    renderAlmanac('plants');
+    $('almanacOverlay').style.display = 'grid';
+  }
+  function closeAlmanac() { almanacOpen = false; $('almanacOverlay').style.display = 'none'; }
+  $('almanacBtn').addEventListener('click', openAlmanac);
+  $('almanacClose').addEventListener('click', closeAlmanac);
+  $('tabPlants').addEventListener('click', () => renderAlmanac('plants'));
+  $('tabZombies').addEventListener('click', () => renderAlmanac('zombies'));
+  $('almanacOverlay').addEventListener('click', e => { if (e.target === e.currentTarget) closeAlmanac(); });   // 點旁邊的暗處也能關閉
+
+  // ===== 出戰植物（開局前選卡）=====
+  const LOADOUT_SLOTS = 8;                 // 最多帶幾種植物（想更多或更少就改這個）
+  const LOADOUT_KEY = 'pvz_mini_loadout_v1';
+  const DEFAULT_LOADOUT = ['sunflower', 'peashooter', 'iceshooter', 'wallnut', 'luanne', 'puncher', 'flamer', 'chomper'];
+  let loadout = [], draft = [];            // loadout＝本局使用；draft＝選卡畫面中暫時的選擇
+  function loadLoadout() {                 // 讀取上次的選擇（沒有或壞掉就用預設組合）
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(LOADOUT_KEY)); } catch (e) {}
+    const ok = Array.isArray(saved) ? saved.filter((id, i, a) => PLANT_INFO[id] && a.indexOf(id) === i).slice(0, LOADOUT_SLOTS) : [];
+    loadout = ok.length ? ok : DEFAULT_LOADOUT.filter(id => PLANT_INFO[id]).slice(0, LOADOUT_SLOTS);
+  }
+  function saveLoadout() { try { localStorage.setItem(LOADOUT_KEY, JSON.stringify(loadout)); } catch (e) {} }
+  function applyLoadout() {                // 工具列只顯示出戰植物，並依選擇順序排列
+    document.querySelectorAll('[data-plant]').forEach(b => {
+      const i = loadout.indexOf(b.dataset.plant);
+      b.style.display = i < 0 ? 'none' : '';
+      b.style.order = i < 0 ? 0 : i - 100;
+    });
+    if (!loadout.includes(selected)) selected = loadout[0];
+    updateButtons();
+  }
+  function renderLoadout() {
+    const full = draft.length >= LOADOUT_SLOTS;
+    let html = '';
+    for (const id of Object.keys(PLANT_INFO)) {
+      const pi = PLANT_INFO[id], idx = draft.indexOf(id);
+      const st = `費用 ${costs[id]}　冷卻 ${cds[id]} 秒` + (pi.noHp ? '' : `　血量 ${maxHpOf[id]}`);
+      html += `<div class="acard lcard${idx >= 0 ? ' sel' : ''}${full && idx < 0 ? ' full' : ''}" data-id="${id}">`
+            + (idx >= 0 ? `<span class="num">${idx + 1}</span>` : '')
+            + `${almanacPic(pi.img, pi.emoji, '', false)}<div><h3>${names[id]}</h3><div class="st">${st}</div><div class="ds">${pi.desc}</div></div></div>`;
+    }
+    $('loadoutList').innerHTML = html;
+    $('loadoutCount').textContent = `已選 ${draft.length} / ${LOADOUT_SLOTS}`;
+    $('loadoutHint').textContent = `點卡片加入或取消，最多帶 ${LOADOUT_SLOTS} 種。卡片上的數字就是快捷鍵順序。` + (hasStarted ? '按「開始遊戲」會用新的組合重新開始本局。' : '');
+    $('loadoutStart').disabled = draft.length === 0;
+  }
+  function openLoadout() {
+    draft = loadout.slice(); choosing = true; hover = null; dragging = false;
+    $('overlay').style.display = 'none';                          // 結算畫面先收起來
+    $('loadoutCancel').style.display = hasStarted ? '' : 'none';  // 第一次進遊戲一定要先選，不能取消
+    renderLoadout();
+    $('loadoutOverlay').style.display = 'grid';
+  }
+  function closeLoadout() {                // 取消：回到原本的遊戲（如果是結算畫面就回到結算畫面）
+    choosing = false; $('loadoutOverlay').style.display = 'none';
+    if (!running) $('overlay').style.display = 'grid';
+  }
+  $('loadoutList').addEventListener('click', e => {
+    const card = e.target.closest && e.target.closest('.lcard');
+    if (!card) return;
+    const id = card.dataset.id, i = draft.indexOf(id);
+    if (i >= 0) draft.splice(i, 1);
+    else if (draft.length < LOADOUT_SLOTS) draft.push(id);
+    renderLoadout();
+  });
+  $('loadoutDefault').addEventListener('click', () => { draft = DEFAULT_LOADOUT.filter(id => PLANT_INFO[id]).slice(0, LOADOUT_SLOTS); renderLoadout(); });
+  $('loadoutClear').addEventListener('click', () => { draft = []; renderLoadout(); });
+  $('loadoutCancel').addEventListener('click', closeLoadout);
+  $('loadoutStart').addEventListener('click', () => {
+    if (!draft.length) return;
+    loadout = draft.slice(); saveLoadout(); hasStarted = true; choosing = false;
+    $('loadoutOverlay').style.display = 'none';
+    reset(); applyLoadout();
+    $('message').textContent = `帶了 ${loadout.length} 種植物，開始佈置防線吧！`;
+  });
+  $('loadoutBtn').addEventListener('click', openLoadout);
+  $('changeLoadout').addEventListener('click', openLoadout);
+
+  function endGame(win) {
+    running=false;
+    $('resultTitle').textContent=win?'過關！':'殭屍闖進來了！';
+    $('resultText').textContent = win
+      ? `恭喜守住了花園！你一共擊退了 ${kills} 隻殭屍。`
+      : `你擊退了 ${kills} 隻殭屍。再試一次，調整植物配置看看能不能撐更久！`;
+    bgm.pause(); win ? sfx.win() : sfx.lose();
+    $('overlay').style.display='grid';
+  }
+  function loop(t) {
+    const dt=Math.min((t-(lastTime||t))/1000,0.05); lastTime=t;
+    if (!paused && !almanacOpen && !choosing) animClock += dt;
+    update(dt); draw(); requestAnimationFrame(loop);
+  }
+  loadLoadout(); reset(); applyLoadout(); openLoadout();   // 一開始先選出戰植物
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
+
+```
